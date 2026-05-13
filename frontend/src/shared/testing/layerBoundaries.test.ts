@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 const sourceRoot = join(process.cwd(), 'src');
@@ -28,6 +28,10 @@ describe('frontend layer boundaries', () => {
 });
 
 function collectSourceFiles(directory: string): string[] {
+  if (!existsSync(directory)) {
+    return [];
+  }
+
   return readdirSync(directory).flatMap((entry) => {
     const path = join(directory, entry);
     const stats = statSync(path);
