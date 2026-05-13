@@ -35,6 +35,7 @@
 - GitHub Actions CI is green on `main` for backend, frontend, API contract, and Helm checks.
 - Helm now has separate dev/staging/prod values, optional in-chart PostgreSQL/Redis deployment, external secret support, ALB-ready ingress annotations, and AWS-ready S3/SES/RDS/Redis placeholders.
 - AWS production setup and backup/restore procedures are documented without requiring real AWS resources in the current development environment.
+- Customer portal P0 now has invoice and statement detail APIs/pages, TanStack Query-backed customer dashboard/invoice/statement reads, and backend/frontend tests for customer detail authorization and rendering.
 
 ## Remaining
 

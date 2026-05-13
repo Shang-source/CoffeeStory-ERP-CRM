@@ -294,8 +294,16 @@ export async function getAdminInvoices() {
   return parseInvoices(await apiRequest('/api/admin/invoices', 'get', '/api/admin/invoices'));
 }
 
+export async function getAdminInvoice(invoiceId: string) {
+  return parseInvoice(await apiRequest('/api/admin/invoices/{id}', 'get', `/api/admin/invoices/${invoiceId}`));
+}
+
 export async function getCustomerInvoices() {
   return parseInvoices(await apiRequest('/api/customer/invoices', 'get', '/api/customer/invoices'));
+}
+
+export async function getCustomerInvoice(invoiceId: string) {
+  return parseInvoice(await apiRequest('/api/customer/invoices/{id}', 'get', `/api/customer/invoices/${invoiceId}`));
 }
 
 export async function sendInvoiceEmail(invoiceId: string) {
@@ -351,6 +359,10 @@ export async function sendStatementEmail(statementId: string) {
 
 export async function getCustomerStatements() {
   return parseStatements(await apiRequest('/api/customer/statements', 'get', '/api/customer/statements'));
+}
+
+export async function getCustomerStatement(statementId: string) {
+  return parseStatement(await apiRequest('/api/customer/statements/{id}', 'get', `/api/customer/statements/${statementId}`));
 }
 
 export async function downloadAdminStatementPdf(statementId: string) {

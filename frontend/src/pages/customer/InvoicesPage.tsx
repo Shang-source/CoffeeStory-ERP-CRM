@@ -1,11 +1,17 @@
-import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, IconButton, Collapse, Alert, CircularProgress } from '@mui/material';
-import { Download, KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
-import { useEffect, useState } from 'react';
+import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, IconButton, Collapse, Button } from '@mui/material';
+import { Download, KeyboardArrowDown, KeyboardArrowUp, Visibility } from '@mui/icons-material';
+import { useState } from 'react';
+import { Link } from 'react-router';
 import { formatInvoiceStatus, getInvoiceStatusColor } from '@/shared/status/statusFormat';
 import { toast } from 'sonner';
 import { Invoice } from '@/entities/types';
 import { getCustomerInvoices } from '@/entities/invoice/api/invoiceApi';
 import { downloadCustomerInvoicePdf } from '@/features/invoiceActions/api/invoiceActionsApi';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/shared/api/queryKeys';
+import { LoadingState } from '@/shared/ui/LoadingState';
+import { ErrorState } from '@/shared/ui/ErrorState';
+import { EmptyState } from '@/shared/ui/EmptyState';
 
 function InvoiceRow({ invoice }: { invoice: Invoice }) {
   const [open, setOpen] = useState(false);
@@ -40,6 +46,15 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
           />
         </TableCell>
         <TableCell>
+          <Button
+            component={Link}
+            to={`/customer/invoices/${invoice.id}`}
+            size="small"
+            startIcon={<Visibility />}
+            sx={{ mr: 1 }}
+          >
+            View
+          </Button>
           <IconButton size="small" onClick={handleDownload}>
             <Download />
           </IconButton>
@@ -93,31 +108,13 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
 }
 
 export default function CustomerInvoices() {
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    const loadInvoices = async () => {
-      try {
-        setError('');
-        setInvoices(await getCustomerInvoices());
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unable to load invoices');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    void loadInvoices();
-  }, []);
+  const { data: invoices = [], isLoading, error } = useQuery({
+    queryKey: queryKeys.customerInvoices,
+    queryFn: getCustomerInvoices,
+  });
 
   if (isLoading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <LoadingState />;
   }
 
   return (
@@ -129,10 +126,13 @@ export default function CustomerInvoices() {
         View and download your invoices
       </Typography>
 
-      {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
+      {error && <ErrorState message={error instanceof Error ? error.message : 'Unable to load invoices'} />}
 
       <Card>
         <CardContent>
+          {invoices.length === 0 && !error ? (
+            <EmptyState title="No invoices found" description="Invoices will appear here once StoryCoffee issues them." />
+          ) : (
           <TableContainer>
             <Table>
               <TableHead>
@@ -144,21 +144,17 @@ export default function CustomerInvoices() {
                   <TableCell align="right">Total</TableCell>
                   <TableCell align="right">Amount Due</TableCell>
                   <TableCell>Status</TableCell>
-                  <TableCell>PDF</TableCell>
+                  <TableCell>Actions</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {invoices.map((invoice) => (
                   <InvoiceRow key={invoice.id} invoice={invoice} />
                 ))}
-                {invoices.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={8} align="center">No invoices found</TableCell>
-                  </TableRow>
-                )}
               </TableBody>
             </Table>
           </TableContainer>
+          )}
         </CardContent>
       </Card>
     </Box>

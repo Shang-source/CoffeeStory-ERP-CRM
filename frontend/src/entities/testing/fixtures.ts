@@ -1,4 +1,4 @@
-import type { Customer, CustomerPriceBook, CustomerProduct, Order, Product, ProductionBatch, StandingOrder } from '@/entities/types';
+import type { Customer, CustomerPriceBook, CustomerProduct, Invoice, Order, Product, ProductionBatch, StandingOrder, Statement } from '@/entities/types';
 import type { UserProfile } from '@/entities/user/model/authTypes';
 
 export const adminProfile: UserProfile = {
@@ -115,6 +115,54 @@ export function makeProductionBatch(overrides: Partial<ProductionBatch> = {}): P
     status: 'Open',
     createdAt: new Date('2026-05-10T00:00:00Z'),
     updatedAt: new Date('2026-05-10T00:00:00Z'),
+    ...overrides,
+  };
+}
+
+export function makeInvoice(overrides: Partial<Invoice> = {}): Invoice {
+  const customer = makeCustomer();
+  return {
+    id: 'invoice-1',
+    invoiceNumber: 'INV-1001',
+    customerId: customer.id,
+    customer,
+    orderId: 'order-1',
+    issueDate: new Date('2026-05-10T00:00:00Z'),
+    dueDate: new Date('2026-05-24T00:00:00Z'),
+    subtotal: 76,
+    gstAmount: 11.4,
+    totalAmount: 87.4,
+    paidAmount: 0,
+    outstandingAmount: 87.4,
+    status: 'Unpaid',
+    emailStatus: 'Sent',
+    items: [{
+      id: 'invoice-item-1',
+      description: 'House Blend 1kg',
+      quantity: 2,
+      unitPrice: 38,
+      lineTotal: 76,
+    }],
+    payments: [],
+    ...overrides,
+  };
+}
+
+export function makeStatement(overrides: Partial<Statement> = {}): Statement {
+  const customer = makeCustomer();
+  const invoice = makeInvoice({ customer, customerId: customer.id });
+  return {
+    id: 'statement-1',
+    statementNumber: 'STMT-1001',
+    customerId: customer.id,
+    customer,
+    statementDate: new Date('2026-05-25T00:00:00Z'),
+    periodStart: new Date('2026-05-10T00:00:00Z'),
+    periodEnd: new Date('2026-05-25T00:00:00Z'),
+    totalOutstanding: invoice.outstandingAmount,
+    status: 'ReadyToSend',
+    emailStatus: 'NotSent',
+    invoices: [invoice],
     ...overrides,
   };
 }

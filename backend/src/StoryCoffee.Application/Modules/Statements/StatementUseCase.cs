@@ -18,8 +18,7 @@ public sealed class StatementUseCase(
 
     public async Task<StatementDto> GetAdminStatement(Guid statementId, CancellationToken cancellationToken)
     {
-        var statement = await statementRepository.GetStatement(statementId, cancellationToken)
-            ?? throw new KeyNotFoundException("Statement not found.");
+        var statement = await GetStatementOrThrow(statementId, null, cancellationToken);
         return statement.ToDto();
     }
 
@@ -27,6 +26,12 @@ public sealed class StatementUseCase(
     {
         var statements = await statementRepository.GetCustomerStatements(customerId, cancellationToken);
         return statements.Select(statement => statement.ToDto()).ToList();
+    }
+
+    public async Task<StatementDto> GetCustomerStatement(Guid customerId, Guid statementId, CancellationToken cancellationToken)
+    {
+        var statement = await GetStatementOrThrow(statementId, customerId, cancellationToken);
+        return statement.ToDto();
     }
 
     public async Task<IReadOnlyList<StatementDto>> GenerateWeeklyStatements(CancellationToken cancellationToken)
@@ -86,12 +91,7 @@ public sealed class StatementUseCase(
 
     public async Task<PdfDocumentResult> GenerateStatementPdf(Guid statementId, Guid? customerId, CancellationToken cancellationToken)
     {
-        var statement = await statementRepository.GetStatement(statementId, cancellationToken)
-            ?? throw new KeyNotFoundException("Statement not found.");
-        if (customerId.HasValue && statement.CustomerId != customerId.Value)
-        {
-            throw new KeyNotFoundException("Statement not found.");
-        }
+        var statement = await GetStatementOrThrow(statementId, customerId, cancellationToken);
 
         if (statement.Status == StatementStatus.Cancelled)
         {
@@ -176,5 +176,17 @@ public sealed class StatementUseCase(
         statement.UpdatedAt = clock.UtcNow;
         await statementRepository.SaveChanges(cancellationToken);
         return statement.ToDto();
+    }
+
+    private async Task<Statement> GetStatementOrThrow(Guid statementId, Guid? customerId, CancellationToken cancellationToken)
+    {
+        var statement = await statementRepository.GetStatement(statementId, cancellationToken)
+            ?? throw new KeyNotFoundException("Statement not found.");
+        if (customerId.HasValue && statement.CustomerId != customerId.Value)
+        {
+            throw new KeyNotFoundException("Statement not found.");
+        }
+
+        return statement;
     }
 }

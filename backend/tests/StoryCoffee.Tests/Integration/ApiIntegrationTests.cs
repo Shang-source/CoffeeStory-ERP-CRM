@@ -59,6 +59,161 @@ public sealed class ApiIntegrationTests(TestingWebAppFactory factory) : IClassFi
     }
 
     [Fact]
+    public async Task CustomerCanReadOwnInvoiceAndStatementDetailsOnly()
+    {
+        var adminClient = factory.CreateClient();
+        var adminLogin = await Login(adminClient, "admin@storycoffee.co.nz");
+        adminClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminLogin.AccessToken);
+        await adminClient.PostAsync("/api/admin/statements/generate-weekly", null);
+        var adminInvoices = await adminClient.GetFromJsonAsync<List<InvoiceDto>>("/api/admin/invoices");
+        var adminStatements = await adminClient.GetFromJsonAsync<List<StatementDto>>("/api/admin/statements");
+        var otherCustomerInvoice = adminInvoices!.FirstOrDefault(invoice => invoice.CustomerId != SeedData.AucklandCustomerId)
+            ?? await CreateOtherCustomerInvoice();
+        var otherCustomerStatementId = adminStatements!
+            .FirstOrDefault(statement => statement.CustomerId != SeedData.AucklandCustomerId)
+            ?.Id ?? await CreateOtherCustomerStatement(otherCustomerInvoice);
+
+        var client = factory.CreateClient();
+        var login = await Login(client, "john@aucklandcafe.co.nz");
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.AccessToken);
+        var invoices = await client.GetFromJsonAsync<List<InvoiceDto>>("/api/customer/invoices");
+        var ownInvoice = invoices!.First();
+        var statements = await client.GetFromJsonAsync<List<StatementDto>>("/api/customer/statements");
+        var ownStatement = statements!.First();
+
+        var invoiceDetail = await client.GetFromJsonAsync<InvoiceDto>($"/api/customer/invoices/{ownInvoice.Id}");
+        var statementDetail = await client.GetFromJsonAsync<StatementDto>($"/api/customer/statements/{ownStatement.Id}");
+        var otherInvoiceResponse = await client.GetAsync($"/api/customer/invoices/{otherCustomerInvoice.Id}");
+        var otherStatementResponse = await client.GetAsync($"/api/customer/statements/{otherCustomerStatementId}");
+
+        Assert.Equal(ownInvoice.Id, invoiceDetail!.Id);
+        Assert.Equal(login.UserProfile.CustomerId, invoiceDetail.CustomerId);
+        Assert.NotEmpty(invoiceDetail.Items);
+        Assert.Equal(ownStatement.Id, statementDetail!.Id);
+        Assert.Equal(login.UserProfile.CustomerId, statementDetail.CustomerId);
+        Assert.NotEmpty(statementDetail.Invoices);
+        Assert.Equal(HttpStatusCode.NotFound, otherInvoiceResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, otherStatementResponse.StatusCode);
+    }
+
+    private async Task<InvoiceDto> CreateOtherCustomerInvoice()
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var customer = await db.Customers.FirstAsync(customer => customer.Id == SeedData.WellingtonCustomerId);
+        var standingOrder = await db.StandingOrders.FirstAsync(order => order.CustomerId == customer.Id);
+        var product = await db.Products.FirstAsync();
+        var now = DateTimeOffset.UtcNow;
+        var order = new Order
+        {
+            Id = Guid.NewGuid(),
+            OrderNumber = $"ORD-TEST-{Guid.NewGuid():N}"[..17],
+            CustomerId = customer.Id,
+            Customer = customer,
+            StandingOrderId = standingOrder.Id,
+            GeneratedAt = now,
+            OrderStatus = OrderStatus.Shipped,
+            InvoiceStatus = InvoiceStatus.Unpaid,
+            ShipmentStatus = ShipmentStatus.Shipped,
+            Subtotal = 10,
+            GstAmount = 1.5m,
+            TotalAmount = 11.5m,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        order.Items.Add(new OrderItem
+        {
+            Id = Guid.NewGuid(),
+            ProductId = product.Id,
+            ProductNameSnapshot = product.Name,
+            SkuSnapshot = product.Sku,
+            Quantity = 1,
+            UnitPriceSnapshot = 10,
+            LineTotal = 10
+        });
+        var invoice = new Invoice
+        {
+            Id = Guid.NewGuid(),
+            InvoiceNumber = $"INV-TEST-{Guid.NewGuid():N}"[..17],
+            CustomerId = customer.Id,
+            Customer = customer,
+            OrderId = order.Id,
+            Order = order,
+            IssueDate = now,
+            DueDate = now.AddDays(14),
+            Subtotal = 10,
+            GstAmount = 1.5m,
+            TotalAmount = 11.5m,
+            PaidAmount = 0,
+            OutstandingAmount = 11.5m,
+            Status = InvoiceStatus.Unpaid,
+            EmailStatus = EmailStatus.NotSent,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        invoice.Items.Add(new InvoiceItem
+        {
+            Id = Guid.NewGuid(),
+            Description = product.Name,
+            Quantity = 1,
+            UnitPrice = 10,
+            LineTotal = 10
+        });
+        db.Orders.Add(order);
+        db.Invoices.Add(invoice);
+        await db.SaveChangesAsync();
+        return new InvoiceDto(
+            invoice.Id,
+            invoice.InvoiceNumber,
+            invoice.CustomerId,
+            null,
+            invoice.OrderId,
+            invoice.IssueDate,
+            invoice.DueDate,
+            invoice.Subtotal,
+            invoice.GstAmount,
+            invoice.TotalAmount,
+            invoice.PaidAmount,
+            invoice.OutstandingAmount,
+            invoice.Status,
+            invoice.EmailStatus,
+            [new InvoiceItemDto(invoice.Items.First().Id, product.Name, 1, 10, 10)],
+            []);
+    }
+
+    private async Task<Guid> CreateOtherCustomerStatement(InvoiceDto invoice)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var statement = new Statement
+        {
+            Id = Guid.NewGuid(),
+            StatementNumber = $"STMT-TEST-{Guid.NewGuid():N}"[..18],
+            CustomerId = invoice.CustomerId,
+            StatementDate = DateTimeOffset.UtcNow,
+            PeriodStart = invoice.IssueDate,
+            PeriodEnd = DateTimeOffset.UtcNow,
+            TotalOutstanding = invoice.OutstandingAmount,
+            Status = StatementStatus.ReadyToSend,
+            EmailStatus = EmailStatus.NotSent
+        };
+        statement.Invoices.Add(new StatementInvoice
+        {
+            Id = Guid.NewGuid(),
+            InvoiceId = invoice.Id,
+            InvoiceNumberSnapshot = invoice.InvoiceNumber,
+            IssueDateSnapshot = invoice.IssueDate,
+            DueDateSnapshot = invoice.DueDate,
+            TotalAmountSnapshot = invoice.TotalAmount,
+            OutstandingAmountSnapshot = invoice.OutstandingAmount,
+            StatusSnapshot = invoice.Status
+        });
+        db.Statements.Add(statement);
+        await db.SaveChangesAsync();
+        return statement.Id;
+    }
+
+    [Fact]
     public async Task AdminCanRecordInvoicePayment()
     {
         var client = factory.CreateClient();

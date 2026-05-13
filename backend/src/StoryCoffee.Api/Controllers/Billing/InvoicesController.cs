@@ -13,6 +13,13 @@ public sealed class InvoicesController(IBillingService billing, IPdfGenerator pd
         return await billing.GetAdminInvoices(cancellationToken);
     }
 
+    [HttpGet("api/admin/invoices/{id:guid}")]
+    public async Task<InvoiceDto> GetAdminInvoice(Guid id, CancellationToken cancellationToken)
+    {
+        RequireRole(UserRole.Admin);
+        return await billing.GetAdminInvoice(id, cancellationToken);
+    }
+
     [HttpPost("api/admin/invoices/{id:guid}/send-email")]
     public async Task<InvoiceDto> SendEmail(Guid id, CancellationToken cancellationToken)
     {
@@ -65,6 +72,13 @@ public sealed class InvoicesController(IBillingService billing, IPdfGenerator pd
     {
         RequireRole(UserRole.Customer);
         return await billing.GetCustomerInvoices(CurrentCustomerId(), cancellationToken);
+    }
+
+    [HttpGet("api/customer/invoices/{id:guid}")]
+    public async Task<InvoiceDto> GetCustomerInvoice(Guid id, CancellationToken cancellationToken)
+    {
+        RequireRole(UserRole.Customer);
+        return await billing.GetCustomerInvoice(CurrentCustomerId(), id, cancellationToken);
     }
 
     [HttpGet("api/customer/invoices/{id:guid}/download-url")]

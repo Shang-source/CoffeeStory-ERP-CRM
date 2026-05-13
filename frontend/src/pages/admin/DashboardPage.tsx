@@ -1,46 +1,31 @@
-import { useEffect, useState } from 'react';
-import { Alert, Box, CircularProgress, Typography, Grid, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip } from '@mui/material';
+import { Box, Typography, Grid, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip } from '@mui/material';
 import { TrendingUp, ShoppingCart, LocalShipping, Warning } from '@mui/icons-material';
 import { formatOrderStatus, getOrderStatusColor } from '@/shared/status/statusFormat';
 import { useNavigate } from 'react-router';
-import { AdminDashboard as AdminDashboardData } from '@/entities/types';
 import { getAdminDashboard } from '@/entities/dashboard/api/dashboardApi';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/shared/api/queryKeys';
+import { LoadingState } from '@/shared/ui/LoadingState';
+import { ErrorState } from '@/shared/ui/ErrorState';
+import { EmptyState } from '@/shared/ui/EmptyState';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
-  const [dashboard, setDashboard] = useState<AdminDashboardData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    const loadDashboard = async () => {
-      try {
-        setError('');
-        setDashboard(await getAdminDashboard());
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unable to load dashboard');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    void loadDashboard();
-  }, []);
+  const { data: dashboard, isLoading, error } = useQuery({
+    queryKey: queryKeys.adminDashboard,
+    queryFn: getAdminDashboard,
+  });
 
   if (isLoading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <LoadingState />;
   }
 
   if (error) {
-    return <Alert severity="error">{error}</Alert>;
+    return <ErrorState message={error instanceof Error ? error.message : 'Unable to load dashboard'} />;
   }
 
   if (!dashboard) {
-    return <Alert severity="info">No dashboard data available</Alert>;
+    return <EmptyState title="No dashboard data available" />;
   }
 
   return (

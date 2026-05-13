@@ -58,6 +58,13 @@ public sealed class StatementsController(IStatementService statements, IPdfGener
         return await statements.GetCustomerStatements(CurrentCustomerId(), cancellationToken);
     }
 
+    [HttpGet("api/customer/statements/{id:guid}")]
+    public async Task<StatementDto> GetCustomerStatement(Guid id, CancellationToken cancellationToken)
+    {
+        RequireRole(UserRole.Customer);
+        return await statements.GetCustomerStatement(CurrentCustomerId(), id, cancellationToken);
+    }
+
     [HttpGet("api/customer/statements/{id:guid}/download-url")]
     public async Task<PdfDownloadDto> GetCustomerDownloadUrl(Guid id, CancellationToken cancellationToken)
     {

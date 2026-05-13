@@ -1,30 +1,20 @@
-import { useEffect, useState } from 'react';
-import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Divider, Alert, CircularProgress } from '@mui/material';
-import { Download } from '@mui/icons-material';
+import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Divider } from '@mui/material';
+import { Download, Visibility } from '@mui/icons-material';
 import { toast } from 'sonner';
-import { Statement } from '@/entities/types';
 import { getCustomerStatements } from '@/entities/statement/api/statementApi';
 import { downloadCustomerStatementPdf } from '@/features/statementActions/api/statementActionsApi';
+import { Link } from 'react-router';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/shared/api/queryKeys';
+import { LoadingState } from '@/shared/ui/LoadingState';
+import { ErrorState } from '@/shared/ui/ErrorState';
+import { EmptyState } from '@/shared/ui/EmptyState';
 
 export default function CustomerStatements() {
-  const [statements, setStatements] = useState<Statement[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    const loadStatements = async () => {
-      try {
-        setError('');
-        setStatements(await getCustomerStatements());
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unable to load statements');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    void loadStatements();
-  }, []);
+  const { data: statements = [], isLoading, error } = useQuery({
+    queryKey: queryKeys.customerStatements,
+    queryFn: getCustomerStatements,
+  });
 
   const handleDownload = async (statementId: string) => {
     try {
@@ -36,11 +26,7 @@ export default function CustomerStatements() {
   };
 
   if (isLoading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <LoadingState />;
   }
 
   return (
@@ -52,7 +38,7 @@ export default function CustomerStatements() {
         View your account statements
       </Typography>
 
-      {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
+      {error && <ErrorState message={error instanceof Error ? error.message : 'Unable to load statements'} />}
 
       {statements.map((statement) => (
         <Card key={statement.id} sx={{ mb: 3 }}>
@@ -69,9 +55,20 @@ export default function CustomerStatements() {
                   {statement.customer?.businessName}
                 </Typography>
               </Box>
-              <Button variant="outlined" startIcon={<Download />} onClick={() => handleDownload(statement.id)}>
-                Download PDF
-              </Button>
+              <Box>
+                <Button
+                  component={Link}
+                  to={`/customer/statements/${statement.id}`}
+                  variant="contained"
+                  startIcon={<Visibility />}
+                  sx={{ mr: 1 }}
+                >
+                  View Details
+                </Button>
+                <Button variant="outlined" startIcon={<Download />} onClick={() => handleDownload(statement.id)}>
+                  Download PDF
+                </Button>
+              </Box>
             </Box>
 
             <Divider sx={{ my: 2 }} />
@@ -122,7 +119,7 @@ export default function CustomerStatements() {
       {statements.length === 0 && !error && (
         <Card>
           <CardContent>
-            <Typography align="center" color="text.secondary">No statements found</Typography>
+            <EmptyState title="No statements found" description="Statements will appear here once they are generated." />
           </CardContent>
         </Card>
       )}

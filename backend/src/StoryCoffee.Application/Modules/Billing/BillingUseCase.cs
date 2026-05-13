@@ -16,20 +16,27 @@ public sealed class BillingUseCase(
         return invoices.Select(invoice => invoice.ToDto()).ToList();
     }
 
+    public async Task<InvoiceDto> GetAdminInvoice(Guid invoiceId, CancellationToken cancellationToken)
+    {
+        var invoice = await GetInvoiceOrThrow(invoiceId, null, cancellationToken);
+        return invoice.ToDto();
+    }
+
     public async Task<IReadOnlyList<InvoiceDto>> GetCustomerInvoices(Guid customerId, CancellationToken cancellationToken)
     {
         var invoices = await billingRepository.GetCustomerInvoices(customerId, cancellationToken);
         return invoices.Select(invoice => invoice.ToDto()).ToList();
     }
 
+    public async Task<InvoiceDto> GetCustomerInvoice(Guid customerId, Guid invoiceId, CancellationToken cancellationToken)
+    {
+        var invoice = await GetInvoiceOrThrow(invoiceId, customerId, cancellationToken);
+        return invoice.ToDto();
+    }
+
     public async Task<PdfDocumentResult> GenerateInvoicePdf(Guid invoiceId, Guid? customerId, CancellationToken cancellationToken)
     {
-        var invoice = await billingRepository.GetInvoice(invoiceId, cancellationToken)
-            ?? throw new KeyNotFoundException("Invoice not found.");
-        if (customerId.HasValue && invoice.CustomerId != customerId.Value)
-        {
-            throw new KeyNotFoundException("Invoice not found.");
-        }
+        var invoice = await GetInvoiceOrThrow(invoiceId, customerId, cancellationToken);
 
         Require(invoice.Status != InvoiceStatus.Cancelled, "Cancelled invoices cannot generate PDFs.");
         var now = clock.UtcNow;
@@ -190,6 +197,18 @@ public sealed class BillingUseCase(
 
         await billingRepository.SaveChanges(cancellationToken);
         return invoices.Count;
+    }
+
+    private async Task<Invoice> GetInvoiceOrThrow(Guid invoiceId, Guid? customerId, CancellationToken cancellationToken)
+    {
+        var invoice = await billingRepository.GetInvoice(invoiceId, cancellationToken)
+            ?? throw new KeyNotFoundException("Invoice not found.");
+        if (customerId.HasValue && invoice.CustomerId != customerId.Value)
+        {
+            throw new KeyNotFoundException("Invoice not found.");
+        }
+
+        return invoice;
     }
 
     private void ApplyPaymentTotals(Invoice invoice, IEnumerable<PaymentRecord> payments)

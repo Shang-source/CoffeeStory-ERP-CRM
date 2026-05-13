@@ -1,55 +1,36 @@
-import { useEffect, useState } from 'react';
-import { Alert, Box, CircularProgress, Typography, Card, CardContent, Button, Chip, Divider, Grid } from '@mui/material';
+import { Box, Typography, Card, CardContent, Button, Chip, Divider, Grid } from '@mui/material';
 import { Link } from 'react-router';
 import { ShoppingCart, Receipt, Warning } from '@mui/icons-material';
 import { useAuth } from '@/app/providers/AuthProvider';
-import { CustomerDashboard as CustomerDashboardData } from '@/entities/types';
 import { getCustomerDashboard } from '@/entities/dashboard/api/dashboardApi';
+import { useQuery } from '@tanstack/react-query';
+import { queryKeys } from '@/shared/api/queryKeys';
+import { LoadingState } from '@/shared/ui/LoadingState';
+import { ErrorState } from '@/shared/ui/ErrorState';
+import { EmptyState } from '@/shared/ui/EmptyState';
 
 export default function CustomerDashboard() {
   const { user } = useAuth();
-  const [dashboard, setDashboard] = useState<CustomerDashboardData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    const loadDashboard = async () => {
-      if (!user?.customerId) {
-        setIsLoading(false);
-        return;
-      }
-
-      try {
-        setError('');
-        setDashboard(await getCustomerDashboard());
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unable to load dashboard');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    void loadDashboard();
-  }, [user?.customerId]);
+  const { data: dashboard, isLoading, error } = useQuery({
+    queryKey: queryKeys.customerDashboard,
+    queryFn: getCustomerDashboard,
+    enabled: Boolean(user?.customerId),
+  });
 
   if (!user || !user.customerId) {
     return <Typography>Access denied</Typography>;
   }
 
   if (isLoading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <LoadingState />;
   }
 
   if (error) {
-    return <Alert severity="error">{error}</Alert>;
+    return <ErrorState message={error instanceof Error ? error.message : 'Unable to load dashboard'} />;
   }
 
   if (!dashboard) {
-    return <Alert severity="info">No dashboard data available</Alert>;
+    return <EmptyState title="No dashboard data available" />;
   }
 
   const { standingOrder, recentInvoices } = dashboard;
@@ -191,12 +172,17 @@ export default function CustomerDashboard() {
                 {recentInvoices.map((invoice) => (
                   <Box
                     key={invoice.id}
+                    component={Link}
+                    to={`/customer/invoices/${invoice.id}`}
                     sx={{
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
                       py: 2,
-                      borderBottom: '1px solid #e0e0e0'
+                      borderBottom: '1px solid #e0e0e0',
+                      color: 'inherit',
+                      textDecoration: 'none',
+                      '&:hover': { bgcolor: 'grey.50' },
                     }}
                   >
                     <Box>
