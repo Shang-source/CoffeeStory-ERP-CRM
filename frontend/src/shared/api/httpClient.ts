@@ -26,6 +26,21 @@ export async function apiRequestNoContent<Path extends ApiPath, Method extends A
   });
 }
 
+export async function apiDownloadBlob<Path extends ApiPath, Method extends ApiMethod<Path>>(
+  _contractPath: Path,
+  method: Method,
+  path: string,
+  fileName: string,
+  init: RequestInit = {},
+) {
+  const response = await fetch(path, withAuthHeaders({
+    ...init,
+    method: method.toUpperCase(),
+  }, false));
+
+  await saveBlobResponse(response, fileName);
+}
+
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(path, withAuthHeaders(init));
 
@@ -44,9 +59,11 @@ export async function requestNoContent(path: string, init: RequestInit = {}) {
   }
 }
 
-export async function downloadBlob(path: string, fileName: string) {
-  const response = await fetch(path, withAuthHeaders({ headers: {} }, false));
+export async function downloadExternalBlob(url: string, fileName: string) {
+  await saveBlobResponse(await fetch(url), fileName);
+}
 
+async function saveBlobResponse(response: Response, fileName: string) {
   if (!response.ok) {
     throw await readApiError(response);
   }

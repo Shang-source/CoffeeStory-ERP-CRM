@@ -36,9 +36,9 @@
 - Helm now has separate dev/staging/prod values, optional in-chart PostgreSQL/Redis deployment, external secret support, ALB-ready ingress annotations, and AWS-ready S3/SES/RDS/Redis placeholders.
 - AWS production setup and backup/restore procedures are documented without requiring real AWS resources in the current development environment.
 - Customer portal P0 now has invoice and statement detail APIs/pages, TanStack Query-backed customer dashboard/invoice/statement reads, and backend/frontend tests for customer detail authorization and rendering.
+- Frontend P1 contract cleanup now separates authenticated API blob downloads from external presigned downloads and uses OpenAPI-derived query contracts for audit/email CSV exports.
 
 ## Remaining
 
 - Replace AWS placeholder values with real ECR images, RDS, ElastiCache, S3, SES/SNS, IAM/IRSA, and External Secrets configuration before production deployment.
-- Replace the remaining CSV/download helper fetches with typed non-JSON OpenAPI helpers if binary/export contract enforcement becomes necessary.
 - Expand k6 coverage beyond smoke tests.

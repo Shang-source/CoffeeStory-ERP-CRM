@@ -56,6 +56,7 @@ Database tables and relationships are documented in `docs/database-schema.md`; b
 - Phase 26: SES webhook intake for Bounce/Complaint/Delivery events, email delivery event persistence, and provider event reconciliation into EmailLog/invoice/statement state.
 - Phase 27: Backend split into Api, Contracts, Domain, Application, Infrastructure, and Tests projects with enforced dependency-boundary architecture tests.
 - Phase 28: Customer invoice/statement detail APIs and pages, customer portal dashboard/list Query wiring, and customer-only detail authorization coverage.
+- Phase 29: Frontend download flows split API-authenticated contract downloads from external presigned downloads, with typed OpenAPI query contracts for CSV exports.
 
 ## Local Development
 

@@ -1,8 +1,8 @@
 import { AccountStatus, AdminDashboard, AuditLog, Customer, CustomerDashboard, CustomerPriceBook, CustomerPriceBookItem, CustomerProduct, EmailLog, EmailStatus, Invoice, Order, OrderFrequency, PagedResult, PaymentRecord, Product, ProductionBatch, ProductionItem, StandingOrder, StandingOrderStatus, Statement, UserRole } from '@/entities/types';
 import type { LoginResponse, UserProfile } from '@/entities/user/model/authTypes';
 import type { components } from '@/shared/api/generated/schema';
-import { apiRequest, apiRequestNoContent, downloadBlob } from '@/shared/api/httpClient';
-import type { ApiRequestBody, ApiResponse } from '@/shared/api/openapi';
+import { apiDownloadBlob, apiRequest, apiRequestNoContent, downloadExternalBlob } from '@/shared/api/httpClient';
+import type { ApiQuery, ApiRequestBody, ApiResponse } from '@/shared/api/openapi';
 import { storeSession } from '@/shared/api/sessionStorage';
 
 type ApiSchemas = components['schemas'];
@@ -28,6 +28,8 @@ type ApiAdminDashboard = ApiResponse<'/api/admin/dashboard', 'get'>;
 type ApiCustomerDashboard = ApiResponse<'/api/customer/dashboard', 'get'>;
 
 type PdfDownloadResponse = RequireKeys<ApiResponse<'/api/admin/invoices/{id}/download-url', 'get'>, 'downloadUrl' | 'fileName' | 'fileKey' | 'generatedAt'>;
+type AuditLogExportQuery = ApiQuery<'/api/admin/logs/audit/export', 'get'>;
+type EmailLogExportQuery = ApiQuery<'/api/admin/logs/email/export', 'get'>;
 type BatchToProductionResponse = {
   updated: number;
   orders: Order[];
@@ -148,11 +150,13 @@ export async function getEmailLogs(params: LogQueryParams = {}) {
 }
 
 export async function exportAuditLogs(params: LogQueryParams = {}) {
-  await downloadCsv(`/api/admin/logs/audit/export${toQueryString(params)}`, 'storycoffee-audit-logs.csv');
+  const query = toQueryString(toAuditLogExportQuery(params));
+  await apiDownloadBlob('/api/admin/logs/audit/export', 'get', `/api/admin/logs/audit/export${query}`, 'storycoffee-audit-logs.csv');
 }
 
 export async function exportEmailLogs(params: LogQueryParams = {}) {
-  await downloadCsv(`/api/admin/logs/email/export${toQueryString(params)}`, 'storycoffee-email-logs.csv');
+  const query = toQueryString(toEmailLogExportQuery(params));
+  await apiDownloadBlob('/api/admin/logs/email/export', 'get', `/api/admin/logs/email/export${query}`, 'storycoffee-email-logs.csv');
 }
 
 export type ProductPayload = RequireKeys<ApiRequestBody<'/api/admin/products', 'post'>, 'sku' | 'name' | 'description' | 'unit' | 'price' | 'cost' | 'isActive'>;
@@ -400,14 +404,30 @@ export function parseCustomerPriceBookResponse(priceBook: CustomerPriceBook): Cu
 }
 
 async function downloadPdf(metadata: PdfDownloadResponse) {
-  await downloadBlob(metadata.downloadUrl, metadata.fileName);
+  await downloadExternalBlob(metadata.downloadUrl, metadata.fileName);
 }
 
-async function downloadCsv(path: string, fileName: string) {
-  await downloadBlob(path, fileName);
+function toAuditLogExportQuery(params: LogQueryParams): AuditLogExportQuery {
+  return {
+    search: params.search,
+    action: params.action,
+    entityType: params.entityType,
+    from: params.from,
+    to: params.to,
+  };
 }
 
-function toQueryString(params: LogQueryParams) {
+function toEmailLogExportQuery(params: LogQueryParams): EmailLogExportQuery {
+  return {
+    search: params.search,
+    entityType: params.entityType,
+    status: params.status || undefined,
+    from: params.from,
+    to: params.to,
+  };
+}
+
+function toQueryString<T extends object>(params: T) {
   const searchParams = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') {

@@ -39,3 +39,8 @@ export type ApiRequestBody<Path extends ApiPath, Method extends ApiMethod<Path>>
   ApiOperation<Path, Method> extends { requestBody?: infer Body }
     ? RequestBody<NonNullable<Body>>
     : never;
+
+export type ApiQuery<Path extends ApiPath, Method extends ApiMethod<Path>> =
+  ApiOperation<Path, Method> extends { parameters: { query?: infer Query } }
+    ? NonNullable<Query>
+    : never;
