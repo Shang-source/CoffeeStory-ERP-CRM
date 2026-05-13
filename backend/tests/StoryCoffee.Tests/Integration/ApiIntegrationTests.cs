@@ -17,6 +17,27 @@ public sealed class ApiIntegrationTests(TestingWebAppFactory factory) : IClassFi
     public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
+    public async Task TestingReset_IsTokenProtectedAndReSeedsDemoData()
+    {
+        var client = factory.CreateClient();
+
+        var forbidden = await client.PostAsync("/api/testing/reset", null);
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/testing/reset");
+        request.Headers.Add("X-StoryCoffee-Test-Token", "test-reset-token");
+        var reset = await client.SendAsync(request);
+        reset.EnsureSuccessStatusCode();
+
+        var login = await Login(client, "admin@storycoffee.co.nz");
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.AccessToken);
+        var orders = await client.GetFromJsonAsync<List<OrderDto>>("/api/admin/orders");
+
+        Assert.NotNull(orders);
+        Assert.True(orders.Count >= 3);
+    }
+
+    [Fact]
     public async Task Login_IssuesTokenAndAllowsAdminOrderRead()
     {
         var client = factory.CreateClient();

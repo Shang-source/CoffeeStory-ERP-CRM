@@ -6,6 +6,17 @@ const customerEmail = 'john@aucklandcafe.co.nz';
 const password = 'password';
 const statementInvoiceStatuses = new Set(['Unpaid', 'PartiallyPaid', 'Overdue']);
 
+test.beforeAll(async ({ request }) => {
+  if (process.env.E2E_RESET_SEED !== 'true') {
+    return;
+  }
+
+  const response = await request.post(`${apiBaseUrl}/api/testing/reset`, {
+    headers: resetHeaders(),
+  });
+  await expect(response, 'E2E reset endpoint should be enabled for reset runs').toBeOK();
+});
+
 test('StoryCoffee app loads', async ({ page }) => {
   await page.goto('/');
   await expect(page).toHaveTitle(/StoryCoffee|Vite|React/);
@@ -236,4 +247,10 @@ async function patchJson(request: APIRequestContext, path: string, token: string
 
 function authHeaders(token?: string) {
   return token ? { Authorization: `Bearer ${token}` } : undefined;
+}
+
+function resetHeaders() {
+  return process.env.E2E_RESET_TOKEN
+    ? { 'X-StoryCoffee-Test-Token': process.env.E2E_RESET_TOKEN }
+    : undefined;
 }

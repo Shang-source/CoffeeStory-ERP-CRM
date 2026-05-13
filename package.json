@@ -12,6 +12,7 @@
     "smoke:api": "node scripts/smoke-storycoffee.mjs",
     "test:backend": "dotnet test backend/StoryCoffee.sln",
     "test:e2e": "pnpm --filter frontend exec playwright test --config ../playwright.config.ts",
+    "test:e2e:reset": "E2E_RESET_SEED=true E2E_RESET_TOKEN=local-e2e-reset-token pnpm test:e2e",
     "test:perf": "k6 run k6/smoke.js"
   },
   "pnpm": {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Alert, CircularProgress } from '@mui/material';
 import { CheckCircle, Undo, Warning } from '@mui/icons-material';
 import { formatInvoiceStatus, getInvoiceStatusColor } from '@/shared/status/statusFormat';
@@ -7,11 +7,11 @@ import { Invoice } from '@/entities/types';
 import { getAdminInvoices } from '@/entities/invoice/api/invoiceApi';
 import { markOverdueInvoices } from '@/features/invoiceActions/api/invoiceActionsApi';
 import { recordInvoicePayment, voidInvoicePayment } from '@/features/paymentRecord/api/paymentRecordApi';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/shared/api/queryKeys';
 
 export default function Payments() {
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
+  const queryClient = useQueryClient();
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [paymentData, setPaymentData] = useState({
@@ -22,20 +22,61 @@ export default function Payments() {
     note: '',
   });
 
-  useEffect(() => {
-    const loadInvoices = async () => {
-      try {
-        setError('');
-        setInvoices(await getAdminInvoices());
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unable to load invoices');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  const { data: invoices = [], isLoading, error } = useQuery({
+    queryKey: queryKeys.adminInvoices,
+    queryFn: getAdminInvoices,
+  });
 
-    void loadInvoices();
-  }, []);
+  const updateInvoiceCache = (updatedInvoice: Invoice) => {
+    queryClient.setQueryData<Invoice[]>(queryKeys.adminInvoices, (currentInvoices = []) =>
+      currentInvoices.map((invoice) => invoice.id === updatedInvoice.id ? updatedInvoice : invoice)
+    );
+  };
+
+  const recordPaymentMutation = useMutation({
+    mutationFn: ({ invoiceId, payload }: {
+      invoiceId: string;
+      payload: {
+        amount: number;
+        paymentDate: string;
+        paymentMethod: string;
+        reference: string;
+        note?: string;
+      };
+    }) => recordInvoicePayment(invoiceId, payload),
+    onSuccess: (updatedInvoice) => {
+      updateInvoiceCache(updatedInvoice);
+      toast.success(`Payment of $${paymentData.amount} recorded for invoice ${updatedInvoice.invoiceNumber}`);
+      setOpenDialog(false);
+      setSelectedInvoice(null);
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : 'Unable to record payment');
+    },
+  });
+
+  const markOverdueMutation = useMutation({
+    mutationFn: markOverdueInvoices,
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.adminInvoices });
+      toast.success(`${result.updatedCount} invoice(s) marked overdue`);
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : 'Unable to mark overdue invoices');
+    },
+  });
+
+  const voidPaymentMutation = useMutation({
+    mutationFn: ({ invoiceId, paymentId, reason }: { invoiceId: string; paymentId: string; reason: string }) =>
+      voidInvoicePayment(invoiceId, paymentId, reason),
+    onSuccess: (updatedInvoice) => {
+      updateInvoiceCache(updatedInvoice);
+      toast.success('Payment voided');
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : 'Unable to void payment');
+    },
+  });
 
   const unpaidInvoices = invoices.filter(inv => inv.status !== 'Paid' && inv.status !== 'Cancelled');
   const recordedPayments = invoices.flatMap((invoice) =>
@@ -59,33 +100,20 @@ export default function Payments() {
       return;
     }
 
-    try {
-      const updatedInvoice = await recordInvoicePayment(selectedInvoice.id, {
+    recordPaymentMutation.mutate({
+      invoiceId: selectedInvoice.id,
+      payload: {
         amount: Number(paymentData.amount),
         paymentDate: new Date(paymentData.paymentDate).toISOString(),
         paymentMethod: paymentData.paymentMethod,
         reference: paymentData.reference,
         note: paymentData.note || undefined,
-      });
-      setInvoices((currentInvoices) =>
-        currentInvoices.map((invoice) => invoice.id === updatedInvoice.id ? updatedInvoice : invoice)
-      );
-      toast.success(`Payment of $${paymentData.amount} recorded for invoice ${selectedInvoice.invoiceNumber}`);
-      setOpenDialog(false);
-      setSelectedInvoice(null);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to record payment');
-    }
+      },
+    });
   };
 
-  const handleMarkOverdue = async () => {
-    try {
-      const result = await markOverdueInvoices();
-      setInvoices(await getAdminInvoices());
-      toast.success(`${result.updatedCount} invoice(s) marked overdue`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to mark overdue invoices');
-    }
+  const handleMarkOverdue = () => {
+    markOverdueMutation.mutate();
   };
 
   const handleVoidPayment = async (invoiceId: string, paymentId: string) => {
@@ -94,15 +122,7 @@ export default function Payments() {
       return;
     }
 
-    try {
-      const updatedInvoice = await voidInvoicePayment(invoiceId, paymentId, reason);
-      setInvoices((currentInvoices) =>
-        currentInvoices.map((invoice) => invoice.id === updatedInvoice.id ? updatedInvoice : invoice)
-      );
-      toast.success('Payment voided');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to void payment');
-    }
+    voidPaymentMutation.mutate({ invoiceId, paymentId, reason });
   };
 
   if (isLoading) {
@@ -123,12 +143,21 @@ export default function Payments() {
       </Typography>
 
       <Box sx={{ mb: 3 }}>
-        <Button variant="outlined" startIcon={<Warning />} onClick={handleMarkOverdue}>
+        <Button
+          variant="outlined"
+          startIcon={<Warning />}
+          onClick={handleMarkOverdue}
+          disabled={markOverdueMutation.isPending}
+        >
           Mark Overdue Invoices
         </Button>
       </Box>
 
-      {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error instanceof Error ? error.message : 'Unable to load invoices'}
+        </Alert>
+      )}
 
       <Card>
         <CardContent>
@@ -169,6 +198,7 @@ export default function Payments() {
                         size="small"
                         startIcon={<CheckCircle />}
                         onClick={() => handleMarkPaid(invoice)}
+                        disabled={recordPaymentMutation.isPending}
                       >
                         Record Payment
                       </Button>
@@ -220,7 +250,7 @@ export default function Payments() {
                         size="small"
                         startIcon={<Undo />}
                         onClick={() => handleVoidPayment(invoice.id, payment.id)}
-                        disabled={payment.isVoided}
+                        disabled={payment.isVoided || voidPaymentMutation.isPending}
                       >
                         Void
                       </Button>
@@ -313,7 +343,7 @@ export default function Payments() {
           <Button
             onClick={handleSavePayment}
             variant="contained"
-            disabled={!paymentData.amount || Number(paymentData.amount) <= 0}
+            disabled={recordPaymentMutation.isPending || !paymentData.amount || Number(paymentData.amount) <= 0}
           >
             Record Payment
           </Button>

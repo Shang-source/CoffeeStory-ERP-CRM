@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, IconButton, Collapse, Alert, CircularProgress } from '@mui/material';
 import { Send, Download, KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
 import { formatInvoiceStatus, getInvoiceStatusColor } from '@/shared/status/statusFormat';
@@ -6,19 +6,19 @@ import { toast } from 'sonner';
 import { Invoice } from '@/entities/types';
 import { getAdminInvoices } from '@/entities/invoice/api/invoiceApi';
 import { downloadAdminInvoicePdf, sendInvoiceEmail } from '@/features/invoiceActions/api/invoiceActionsApi';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/shared/api/queryKeys';
 
-function InvoiceRow({ invoice, onInvoiceUpdate }: { invoice: Invoice; onInvoiceUpdate: (invoice: Invoice) => void }) {
+function InvoiceRow({
+  invoice,
+  isSending,
+  onSendEmail,
+}: {
+  invoice: Invoice;
+  isSending: boolean;
+  onSendEmail: (invoiceId: string) => void;
+}) {
   const [open, setOpen] = useState(false);
-
-  const handleSendEmail = async () => {
-    try {
-      const updated = await sendInvoiceEmail(invoice.id);
-      onInvoiceUpdate(updated);
-      toast.success(`Invoice ${invoice.invoiceNumber} sent to ${invoice.customer?.email}`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to send invoice');
-    }
-  };
 
   const handleDownload = async () => {
     try {
@@ -51,7 +51,11 @@ function InvoiceRow({ invoice, onInvoiceUpdate }: { invoice: Invoice; onInvoiceU
           />
         </TableCell>
         <TableCell>
-          <IconButton size="small" onClick={handleSendEmail} disabled={invoice.status === 'Paid' || invoice.status === 'Cancelled'}>
+          <IconButton
+            size="small"
+            onClick={() => onSendEmail(invoice.id)}
+            disabled={isSending || invoice.status === 'Paid' || invoice.status === 'Cancelled'}
+          >
             <Send />
           </IconButton>
           <IconButton size="small" onClick={handleDownload}>
@@ -107,30 +111,24 @@ function InvoiceRow({ invoice, onInvoiceUpdate }: { invoice: Invoice; onInvoiceU
 }
 
 export default function Invoices() {
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
+  const queryClient = useQueryClient();
+  const { data: invoices = [], isLoading, error } = useQuery({
+    queryKey: queryKeys.adminInvoices,
+    queryFn: getAdminInvoices,
+  });
 
-  useEffect(() => {
-    const loadInvoices = async () => {
-      try {
-        setError('');
-        setInvoices(await getAdminInvoices());
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unable to load invoices');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    void loadInvoices();
-  }, []);
-
-  const updateInvoice = (updatedInvoice: Invoice) => {
-    setInvoices((currentInvoices) =>
-      currentInvoices.map((invoice) => invoice.id === updatedInvoice.id ? updatedInvoice : invoice)
-    );
-  };
+  const sendEmailMutation = useMutation({
+    mutationFn: sendInvoiceEmail,
+    onSuccess: (updatedInvoice) => {
+      queryClient.setQueryData<Invoice[]>(queryKeys.adminInvoices, (currentInvoices = []) =>
+        currentInvoices.map((invoice) => invoice.id === updatedInvoice.id ? updatedInvoice : invoice)
+      );
+      toast.success(`Invoice ${updatedInvoice.invoiceNumber} sent to ${updatedInvoice.customer?.email ?? 'customer'}`);
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : 'Unable to send invoice');
+    },
+  });
 
   if (isLoading) {
     return (
@@ -149,7 +147,11 @@ export default function Invoices() {
         Manage customer invoices
       </Typography>
 
-      {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error instanceof Error ? error.message : 'Unable to load invoices'}
+        </Alert>
+      )}
 
       <Card>
         <CardContent>
@@ -170,7 +172,12 @@ export default function Invoices() {
               </TableHead>
               <TableBody>
                 {invoices.map((invoice) => (
-                  <InvoiceRow key={invoice.id} invoice={invoice} onInvoiceUpdate={updateInvoice} />
+                  <InvoiceRow
+                    key={invoice.id}
+                    invoice={invoice}
+                    isSending={sendEmailMutation.isPending && sendEmailMutation.variables === invoice.id}
+                    onSendEmail={(invoiceId) => sendEmailMutation.mutate(invoiceId)}
+                  />
                 ))}
                 {invoices.length === 0 && (
                   <TableRow>

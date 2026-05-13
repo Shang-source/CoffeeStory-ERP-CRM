@@ -98,6 +98,8 @@ public sealed class TestingWebAppFactory : WebApplicationFactory<Program>, IAsyn
                 ["Jwt:ExpiryMinutes"] = "60",
                 ["SeedData:Enabled"] = "true",
                 ["SeedData:EnableInTesting"] = "true",
+                ["Testing:ResetEnabled"] = "true",
+                ["Testing:ResetToken"] = "test-reset-token",
                 ["Redis:Enabled"] = "true",
                 ["Redis:ConnectionString"] = redis.GetConnectionString(),
                 ["DocumentStorage:Provider"] = "Local",

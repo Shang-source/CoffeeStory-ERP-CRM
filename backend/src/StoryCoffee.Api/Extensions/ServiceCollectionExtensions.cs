@@ -17,6 +17,9 @@ public static class ServiceCollectionExtensions
         services.AddOptions<StoryCoffeeCorsOptions>()
             .Bind(configuration.GetSection("Cors"))
             .ValidateOnStart();
+        services.AddOptions<TestingOptions>()
+            .Bind(configuration.GetSection("Testing"))
+            .ValidateOnStart();
         services.Configure<RouteOptions>(options => options.LowercaseUrls = true);
         services.ConfigureHttpJsonOptions(options =>
         {

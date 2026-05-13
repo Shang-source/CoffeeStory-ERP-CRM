@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Chip, IconButton, Alert, CircularProgress } from '@mui/material';
 import { Add, Visibility, Send, Download } from '@mui/icons-material';
@@ -6,53 +5,53 @@ import { toast } from 'sonner';
 import { Statement } from '@/entities/types';
 import { getAdminStatements } from '@/entities/statement/api/statementApi';
 import { downloadAdminStatementPdf, generateWeeklyStatements, sendStatementEmail } from '@/features/statementActions/api/statementActionsApi';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/shared/api/queryKeys';
 
 export default function Statements() {
   const navigate = useNavigate();
-  const [statements, setStatements] = useState<Statement[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
+  const queryClient = useQueryClient();
+  const { data: statements = [], isLoading, error } = useQuery({
+    queryKey: queryKeys.adminStatements,
+    queryFn: getAdminStatements,
+  });
 
-  useEffect(() => {
-    void loadStatements();
-  }, []);
-
-  const loadStatements = async () => {
-    try {
-      setError('');
-      setStatements(await getAdminStatements());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to load statements');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleGenerateWeekly = async () => {
-    try {
-      const generated = await generateWeeklyStatements();
+  const generateWeeklyMutation = useMutation({
+    mutationFn: generateWeeklyStatements,
+    onSuccess: (generated) => {
       const generatedIds = new Set(generated.map(statement => statement.id));
-      setStatements((current) => [
+      queryClient.setQueryData<Statement[]>(queryKeys.adminStatements, (current = []) => [
         ...generated,
         ...current.filter(statement => !generatedIds.has(statement.id)),
       ]);
       toast.success(`${generated.length} weekly statement${generated.length === 1 ? '' : 's'} generated`);
-    } catch (err) {
+    },
+    onError: (err) => {
       toast.error(err instanceof Error ? err.message : 'Unable to generate statements');
-    }
+    },
+  });
+
+  const sendEmailMutation = useMutation({
+    mutationFn: sendStatementEmail,
+    onSuccess: (updatedStatement) => {
+      queryClient.setQueryData<Statement[]>(queryKeys.adminStatements, (current = []) =>
+        current.map(statement => statement.id === updatedStatement.id ? updatedStatement : statement)
+      );
+      queryClient.setQueryData<Statement>(queryKeys.adminStatement(updatedStatement.id), updatedStatement);
+      toast.success('Statement sent to customer');
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : 'Unable to send statement');
+    },
+  });
+
+  const handleGenerateWeekly = () => {
+    generateWeeklyMutation.mutate();
   };
 
-  const handleSendEmail = async (statementId: string, event: React.MouseEvent) => {
+  const handleSendEmail = (statementId: string, event: React.MouseEvent) => {
     event.stopPropagation();
-    try {
-      const updated = await sendStatementEmail(statementId);
-      setStatements((current) =>
-        current.map(statement => statement.id === updated.id ? updated : statement)
-      );
-      toast.success('Statement sent to customer');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to send statement');
-    }
+    sendEmailMutation.mutate(statementId);
   };
 
   const handleDownload = async (statementId: string, event: React.MouseEvent) => {
@@ -88,12 +87,21 @@ export default function Statements() {
             Manage customer account statements and send reminders
           </Typography>
         </div>
-        <Button variant="contained" startIcon={<Add />} onClick={handleGenerateWeekly}>
+        <Button
+          variant="contained"
+          startIcon={<Add />}
+          onClick={handleGenerateWeekly}
+          disabled={generateWeeklyMutation.isPending}
+        >
           Generate Weekly Statements
         </Button>
       </Box>
 
-      {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          {error instanceof Error ? error.message : 'Unable to load statements'}
+        </Alert>
+      )}
 
       <Card>
         <CardContent>
@@ -148,7 +156,7 @@ export default function Statements() {
                       <IconButton
                         size="small"
                         onClick={(e) => handleSendEmail(statement.id, e)}
-                        disabled={statement.emailStatus === 'Sent'}
+                        disabled={statement.emailStatus === 'Sent' || sendEmailMutation.isPending}
                         title="Send Email"
                       >
                         <Send />

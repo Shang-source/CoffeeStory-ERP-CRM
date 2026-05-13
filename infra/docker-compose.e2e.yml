@@ -1,0 +1,5 @@
+services:
+  api:
+    environment:
+      Testing__ResetEnabled: true
+      Testing__ResetToken: local-e2e-reset-token

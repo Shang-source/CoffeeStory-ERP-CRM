@@ -2839,6 +2839,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/testing/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["TestDataResetResponse"];
+                        "application/json": components["schemas"]["TestDataResetResponse"];
+                        "text/json": components["schemas"]["TestDataResetResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3304,6 +3341,11 @@ export interface components {
         };
         /** @enum {string} */
         StatementStatus: "Draft" | "ReadyToSend" | "Sent" | "Cancelled";
+        TestDataResetResponse: {
+            status?: string | null;
+            /** Format: date-time */
+            resetAt?: string;
+        };
         UpdateAdminStandingOrderRequest: {
             frequency?: components["schemas"]["OrderFrequency"];
             /** Format: date-time */

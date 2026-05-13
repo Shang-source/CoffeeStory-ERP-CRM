@@ -40,6 +40,8 @@
 - k6 now exercises platform readiness plus Admin and Customer read APIs instead of only `/health`.
 - Playwright smoke coverage now includes Customer dashboard, invoice detail, statement detail, and account settings after ensuring seeded financial data exists.
 - CI now validates Helm lint, Docker Compose config for local/test stacks, and backend/frontend Docker image builds.
+- Admin Invoices, Payments, and Statements now use TanStack Query for server state instead of page-local duplicated loading/error/refetch state.
+- E2E runs can opt into a protected Development/Testing-only reset endpoint through `infra/docker-compose.e2e.yml` and `pnpm test:e2e:reset`.
 
 ## Remaining
 

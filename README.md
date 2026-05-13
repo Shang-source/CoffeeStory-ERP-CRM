@@ -87,6 +87,15 @@ The stack starts PostgreSQL, Redis, the API, and the frontend.
 It also starts LocalStack for S3-compatible development and MailHog for local SMTP capture.
 Host ports are `8080` for frontend, `5080` for API, `15432` for PostgreSQL, `16379` for Redis, `4566` for LocalStack, and `8025` for MailHog.
 
+For deterministic E2E runs with database reset enabled, start the local stack with the E2E override:
+
+```bash
+docker compose -f infra/docker-compose.yml -f infra/docker-compose.e2e.yml up --build
+pnpm test:e2e:reset
+```
+
+The reset endpoint is disabled by default and only works in Development or Testing when `Testing:ResetEnabled=true`.
+
 ## Seed Data
 
 Demo data is controlled by `SeedData` options. Production defaults do not seed test/demo data; development and testing can opt in through `SeedData:EnableInDevelopment`, `SeedData:EnableInTesting`, or explicit `SeedData:Enabled`.
@@ -108,6 +117,7 @@ pnpm --filter frontend exec tsc --noEmit
 pnpm --filter frontend test
 pnpm --filter frontend build
 pnpm test:e2e
+pnpm test:e2e:reset
 pnpm test:perf
 pnpm check:api
 pnpm smoke:api
@@ -119,7 +129,7 @@ docker build -f backend/src/StoryCoffee.Api/Dockerfile -t storycoffee-api:local 
 docker build -f frontend/Dockerfile -t storycoffee-frontend:local .
 ```
 
-`pnpm check:api` expects the API Swagger endpoint to be running at `STORYCOFFEE_OPENAPI_URL` or `http://localhost:5080/swagger/v1/swagger.json`. `pnpm smoke:api` expects a seeded API at `STORYCOFFEE_API_URL` or `http://localhost:5080`. `pnpm test:e2e` expects the frontend at `E2E_BASE_URL` or `http://localhost:8080` and the API at `E2E_API_BASE_URL` or `http://localhost:5080`. `pnpm test:perf` expects k6 plus a seeded API at `API_BASE_URL` or `http://localhost:5080`. `helm` and `docker` must be installed locally for the final checks.
+`pnpm check:api` expects the API Swagger endpoint to be running at `STORYCOFFEE_OPENAPI_URL` or `http://localhost:5080/swagger/v1/swagger.json`. `pnpm smoke:api` expects a seeded API at `STORYCOFFEE_API_URL` or `http://localhost:5080`. `pnpm test:e2e` expects the frontend at `E2E_BASE_URL` or `http://localhost:8080` and the API at `E2E_API_BASE_URL` or `http://localhost:5080`. `pnpm test:e2e:reset` also expects the API to run with `Testing:ResetEnabled=true` and matching `E2E_RESET_TOKEN`. `pnpm test:perf` expects k6 plus a seeded API at `API_BASE_URL` or `http://localhost:5080`. `helm` and `docker` must be installed locally for the final checks.
 
 ## Engineering Scaffolds
 

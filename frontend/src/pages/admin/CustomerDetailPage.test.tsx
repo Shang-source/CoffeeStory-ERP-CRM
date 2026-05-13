@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeCustomer, makeCustomerPriceBook, makeStandingOrder } from '@/entities/testing/fixtures';
@@ -81,13 +82,7 @@ describe('CustomerDetailPage', () => {
       }],
     }));
 
-    const { container } = render(
-      <MemoryRouter initialEntries={['/admin/customers/customer-1']}>
-        <Routes>
-          <Route path="/admin/customers/:id" element={<CustomerDetailPage />} />
-        </Routes>
-      </MemoryRouter>
-    );
+    const { container } = renderWithQuery();
 
     const priceBookHeading = await screen.findByRole('heading', { name: 'Price Book' });
     const priceBookSection = priceBookHeading.closest('.MuiCardContent-root');
@@ -114,3 +109,22 @@ describe('CustomerDetailPage', () => {
     expect((await screen.findAllByText('$34.50')).length).toBeGreaterThan(0);
   }, 10_000);
 });
+
+function renderWithQuery() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={['/admin/customers/customer-1']}>
+        <Routes>
+          <Route path="/admin/customers/:id" element={<CustomerDetailPage />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+}
