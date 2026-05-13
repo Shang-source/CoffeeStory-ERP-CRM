@@ -124,6 +124,11 @@ docker compose -f infra/docker-compose.yml config
 
 ```bash
 helm template storycoffee infra/helm/storycoffee
+helm template storycoffee infra/helm/storycoffee -f infra/helm/storycoffee/values-dev.yaml
+helm template storycoffee infra/helm/storycoffee -f infra/helm/storycoffee/values-staging.yaml
+helm template storycoffee infra/helm/storycoffee -f infra/helm/storycoffee/values-prod.yaml
 ```
 
 For local Kubernetes deployment with Docker Desktop, see `docs/kubernetes-local.md`.
+For AWS staging/production readiness, see `docs/aws-production-checklist.md`.
+For backup and restore procedures, see `docs/backup-restore.md`.

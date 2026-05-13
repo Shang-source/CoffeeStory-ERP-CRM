@@ -1,0 +1,66 @@
+imagePullPolicy: IfNotPresent
+
+app:
+  environment: Production
+  seedDataEnabled: false
+  seedDataEnableInDevelopment: false
+  seedDataEnableInTesting: false
+  corsAllowedOrigins:
+    - https://app.storycoffee.co.nz
+
+secret:
+  create: false
+  existingName: storycoffee-prod-secret
+
+frontend:
+  image: "<aws-account-id>.dkr.ecr.ap-southeast-2.amazonaws.com/storycoffee-frontend:prod"
+  replicas: 2
+
+api:
+  image: "<aws-account-id>.dkr.ecr.ap-southeast-2.amazonaws.com/storycoffee-api:prod"
+  replicas: 2
+  connectionString: ""
+  redisConnectionString: "<elasticache-primary-endpoint>:6379"
+  quartzEnabled: true
+  documentStorageProvider: S3
+  documentStorageBucketName: storycoffee-prod-documents
+  documentStorageS3Region: ap-southeast-2
+  documentStorageServiceUrl: ""
+  documentStorageAccessKey: ""
+  documentStorageSecretKey: ""
+  documentStorageForcePathStyle: false
+  emailProvider: Ses
+  emailFromAddress: no-reply@storycoffee.co.nz
+  emailSesRegion: ap-southeast-2
+  emailSesEndpointUrl: ""
+  emailSesConfigurationSet: storycoffee-prod
+  emailVerifySnsSignature: true
+  emailAutoConfirmSnsSubscriptions: false
+  emailSnsTopicArn: "arn:aws:sns:ap-southeast-2:<aws-account-id>:storycoffee-prod-ses-events"
+  outboxEnabled: true
+
+postgres:
+  enabled: false
+
+redis:
+  enabled: true
+  deploy: false
+
+localstack:
+  enabled: false
+
+mailhog:
+  enabled: false
+
+ingress:
+  enabled: true
+  className: alb
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+  host: app.storycoffee.co.nz
+  tls:
+    enabled: false
+    secretName: storycoffee-prod-tls

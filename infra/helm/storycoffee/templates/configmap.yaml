@@ -3,17 +3,24 @@ kind: ConfigMap
 metadata:
   name: storycoffee-config
 data:
-  ASPNETCORE_ENVIRONMENT: Development
+  ASPNETCORE_ENVIRONMENT: {{ .Values.app.environment | quote }}
   ASPNETCORE_URLS: http://+:{{ .Values.api.port }}
-  Jwt__Issuer: StoryCoffee
-  Jwt__Audience: StoryCoffee.App
-  Jwt__ExpiryMinutes: "480"
-  Cors__AllowedOrigins__0: http://localhost:8080
-  Cors__AllowedOrigins__1: http://{{ .Values.ingress.host }}
+  Jwt__Issuer: {{ .Values.app.jwtIssuer | quote }}
+  Jwt__Audience: {{ .Values.app.jwtAudience | quote }}
+  Jwt__ExpiryMinutes: {{ .Values.app.jwtExpiryMinutes | quote }}
+  {{- range $index, $origin := .Values.app.corsAllowedOrigins }}
+  Cors__AllowedOrigins__{{ $index }}: {{ $origin | quote }}
+  {{- end }}
+  Quartz__Enabled: {{ .Values.api.quartzEnabled | quote }}
+  Quartz__StandingOrderIntervalMinutes: {{ .Values.api.quartzStandingOrderIntervalMinutes | quote }}
+  SeedData__Enabled: {{ .Values.app.seedDataEnabled | quote }}
+  SeedData__EnableInDevelopment: {{ .Values.app.seedDataEnableInDevelopment | quote }}
+  SeedData__EnableInTesting: {{ .Values.app.seedDataEnableInTesting | quote }}
   Redis__Enabled: {{ .Values.redis.enabled | quote }}
   Redis__ConnectionString: {{ .Values.api.redisConnectionString | quote }}
   DocumentStorage__Provider: {{ .Values.api.documentStorageProvider | quote }}
   DocumentStorage__LocalRoot: {{ .Values.api.documentStorageRoot | quote }}
+  DocumentStorage__PresignedUrlMinutes: {{ .Values.api.documentStoragePresignedUrlMinutes | quote }}
   DocumentStorage__BucketName: {{ .Values.api.documentStorageBucketName | quote }}
   DocumentStorage__S3Region: {{ .Values.api.documentStorageS3Region | quote }}
   DocumentStorage__ServiceUrl: {{ .Values.api.documentStorageServiceUrl | quote }}

@@ -1,3 +1,4 @@
+{{- if .Values.postgres.enabled }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -31,7 +32,7 @@ spec:
             - containerPort: 5432
           envFrom:
             - secretRef:
-                name: storycoffee-secret
+                name: {{ include "storycoffee.secretName" . }}
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
@@ -55,3 +56,4 @@ spec:
   ports:
     - port: 5432
       targetPort: 5432
+{{- end }}

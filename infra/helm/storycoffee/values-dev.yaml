@@ -2,14 +2,12 @@ imagePullPolicy: IfNotPresent
 
 app:
   environment: Development
-  jwtIssuer: StoryCoffee
-  jwtAudience: StoryCoffee.App
-  jwtExpiryMinutes: "480"
   seedDataEnabled: false
   seedDataEnableInDevelopment: true
   seedDataEnableInTesting: true
   corsAllowedOrigins:
     - http://localhost:8080
+    - http://localhost:5173
     - http://storycoffee.local
 
 secret:
@@ -20,72 +18,51 @@ secret:
 frontend:
   image: storycoffee-frontend:dev
   replicas: 1
-  port: 80
 
 api:
   image: storycoffee-api:dev
-  replicas: 1
-  port: 8080
   jwtSecret: dev-only-change-me-storycoffee-phase-one-secret
   connectionString: Host=storycoffee-postgres;Port=5432;Database=storycoffee;Username=storycoffee;Password=storycoffee_password
   redisConnectionString: storycoffee-redis:6379
   quartzEnabled: false
-  quartzStandingOrderIntervalMinutes: "60"
-  documentStorageProvider: Local
-  documentStorageRoot: /var/storycoffee-files
+  documentStorageProvider: S3
   documentStorageSigningSecret: dev-only-document-storage-signing-secret
-  documentStoragePresignedUrlMinutes: "15"
   documentStorageBucketName: storycoffee-documents
   documentStorageS3Region: ap-southeast-2
-  documentStorageServiceUrl: ""
-  documentStorageAccessKey: ""
-  documentStorageSecretKey: ""
+  documentStorageServiceUrl: http://storycoffee-localstack:4566
+  documentStorageAccessKey: test
+  documentStorageSecretKey: test
   documentStorageForcePathStyle: true
-  emailProvider: Stub
-  emailFromAddress: no-reply@storycoffee.co.nz
-  emailSmtpHost: localhost
+  emailProvider: Smtp
+  emailSmtpHost: storycoffee-mailhog
   emailSmtpPort: "1025"
-  emailSmtpUsername: ""
-  emailSmtpPassword: ""
   emailUseStartTls: false
   emailSesRegion: ap-southeast-2
   emailSesEndpointUrl: ""
   emailSesConfigurationSet: ""
   emailWebhookSecret: ""
-  emailVerifySnsSignature: true
+  emailVerifySnsSignature: false
   emailAutoConfirmSnsSubscriptions: false
   emailSnsTopicArn: ""
   outboxEnabled: true
-  outboxLockTimeoutSeconds: "300"
 
 postgres:
   enabled: true
-  image: postgres:16
-  database: storycoffee
-  username: storycoffee
-  password: storycoffee_password
   storage: 2Gi
 
 redis:
   enabled: true
   deploy: true
-  image: redis:7
-  port: 6379
 
 localstack:
-  enabled: false
-  image: localstack/localstack:3
-  port: 4566
+  enabled: true
 
 mailhog:
-  enabled: false
-  image: mailhog/mailhog:v1.0.1
-  smtpPort: 1025
-  webPort: 8025
+  enabled: true
 
 ingress:
   enabled: false
-  className: nginx
+  className: traefik
   annotations: {}
   host: storycoffee.local
   tls:

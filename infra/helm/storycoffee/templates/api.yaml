@@ -22,7 +22,7 @@ spec:
             - configMapRef:
                 name: storycoffee-config
             - secretRef:
-                name: storycoffee-secret
+                name: {{ include "storycoffee.secretName" . }}
           readinessProbe:
             httpGet:
               path: /ready

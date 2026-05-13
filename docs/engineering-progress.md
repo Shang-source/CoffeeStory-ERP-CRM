@@ -33,9 +33,11 @@
 - The local project folder is initialized as a Git repository, connected to GitHub, and pushed to `origin/main`.
 - Frontend P0 Vitest coverage now includes login success/failure, role guard redirects, admin batch-to-production, admin price-book save/repricing, and customer standing-order effective price rendering.
 - GitHub Actions CI is green on `main` for backend, frontend, API contract, and Helm checks.
+- Helm now has separate dev/staging/prod values, optional in-chart PostgreSQL/Redis deployment, external secret support, ALB-ready ingress annotations, and AWS-ready S3/SES/RDS/Redis placeholders.
+- AWS production setup and backup/restore procedures are documented without requiring real AWS resources in the current development environment.
 
 ## Remaining
 
-- Add real AWS environment values for SES domain/SNS topic/IAM role before production deployment.
+- Replace AWS placeholder values with real ECR images, RDS, ElastiCache, S3, SES/SNS, IAM/IRSA, and External Secrets configuration before production deployment.
 - Replace the remaining CSV/download helper fetches with typed non-JSON OpenAPI helpers if binary/export contract enforcement becomes necessary.
 - Expand k6 coverage beyond smoke tests.

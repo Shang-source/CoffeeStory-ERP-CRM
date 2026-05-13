@@ -35,6 +35,8 @@ The local Helm values deploy:
 - LocalStack S3 for PDF storage.
 - MailHog for SMTP capture.
 
+The local script uses `infra/helm/storycoffee/values-local.yaml`. `infra/helm/storycoffee/values-dev.yaml` is the equivalent named development values file for direct Helm testing.
+
 ## Access
 
 ```bash
@@ -63,3 +65,5 @@ For production Kubernetes, keep the app workloads in the cluster but use managed
 - Email: AWS SES with SNS delivery events posted to `/api/webhooks/ses`.
 - Webhooks: keep `Email__VerifySnsSignature=true`, set `Email__SnsTopicArn`, and only enable `Email__AutoConfirmSnsSubscriptions` after ingress/TLS is ready.
 - Secrets: external secret manager or sealed secrets.
+
+AWS-specific staging and production placeholders are in `infra/helm/storycoffee/values-staging.yaml` and `infra/helm/storycoffee/values-prod.yaml`. The full production checklist is in `docs/aws-production-checklist.md`.

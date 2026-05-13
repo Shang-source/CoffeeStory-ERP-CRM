@@ -1,5 +1,20 @@
 imagePullPolicy: IfNotPresent
 
+app:
+  environment: Development
+  seedDataEnabled: false
+  seedDataEnableInDevelopment: true
+  seedDataEnableInTesting: true
+  corsAllowedOrigins:
+    - http://localhost:8080
+    - http://localhost:5173
+    - http://storycoffee.local
+
+secret:
+  create: true
+  name: storycoffee-secret
+  existingName: ""
+
 frontend:
   image: storycoffee-frontend:dev
   replicas: 1
@@ -9,7 +24,9 @@ api:
   jwtSecret: dev-only-change-me-storycoffee-phase-one-secret
   connectionString: Host=storycoffee-postgres;Port=5432;Database=storycoffee;Username=storycoffee;Password=storycoffee_password
   redisConnectionString: storycoffee-redis:6379
+  quartzEnabled: false
   documentStorageProvider: S3
+  documentStorageSigningSecret: dev-only-document-storage-signing-secret
   documentStorageBucketName: storycoffee-documents
   documentStorageS3Region: ap-southeast-2
   documentStorageServiceUrl: http://storycoffee-localstack:4566
@@ -31,10 +48,12 @@ api:
   outboxLockTimeoutSeconds: "300"
 
 postgres:
+  enabled: true
   storage: 2Gi
 
 redis:
   enabled: true
+  deploy: true
 
 localstack:
   enabled: true
@@ -45,4 +64,8 @@ mailhog:
 ingress:
   enabled: false
   className: traefik
+  annotations: {}
   host: storycoffee.local
+  tls:
+    enabled: false
+    secretName: storycoffee-tls

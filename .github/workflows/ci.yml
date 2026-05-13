@@ -86,4 +86,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
-      - run: helm template storycoffee infra/helm/storycoffee
+      - run: |
+          helm template storycoffee infra/helm/storycoffee
+          helm template storycoffee infra/helm/storycoffee -f infra/helm/storycoffee/values-local.yaml
+          helm template storycoffee infra/helm/storycoffee -f infra/helm/storycoffee/values-dev.yaml
+          helm template storycoffee infra/helm/storycoffee -f infra/helm/storycoffee/values-staging.yaml
+          helm template storycoffee infra/helm/storycoffee -f infra/helm/storycoffee/values-prod.yaml
