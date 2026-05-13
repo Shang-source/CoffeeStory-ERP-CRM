@@ -104,13 +104,14 @@ dotnet test backend/StoryCoffee.sln -m:1 /nr:false --filter "FullyQualifiedName!
 pnpm --filter frontend exec tsc --noEmit
 pnpm --filter frontend test
 pnpm --filter frontend build
+pnpm test:e2e
 pnpm check:api
 pnpm smoke:api
 helm template storycoffee infra/helm/storycoffee
 docker compose -f infra/docker-compose.yml config
 ```
 
-`pnpm check:api` expects the API Swagger endpoint to be running at `STORYCOFFEE_OPENAPI_URL` or `http://localhost:5080/swagger/v1/swagger.json`. `pnpm smoke:api` expects a seeded API at `STORYCOFFEE_API_URL` or `http://localhost:5080`. `helm` and `docker` must be installed locally for the final checks.
+`pnpm check:api` expects the API Swagger endpoint to be running at `STORYCOFFEE_OPENAPI_URL` or `http://localhost:5080/swagger/v1/swagger.json`. `pnpm smoke:api` expects a seeded API at `STORYCOFFEE_API_URL` or `http://localhost:5080`. `pnpm test:e2e` expects the frontend at `E2E_BASE_URL` or `http://localhost:8080` and the API at `E2E_API_BASE_URL` or `http://localhost:5080`. `helm` and `docker` must be installed locally for the final checks.
 
 ## Engineering Scaffolds
 

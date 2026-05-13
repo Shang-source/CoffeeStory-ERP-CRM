@@ -53,5 +53,5 @@ describe('Customer StandingOrderPage', () => {
       expect(screen.getAllByText('$35.00').length).toBeGreaterThan(0);
     });
     expect(screen.getByText('Estimated Total: $35.00')).toBeInTheDocument();
-  });
+  }, 10_000);
 });

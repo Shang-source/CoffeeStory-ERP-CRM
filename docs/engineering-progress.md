@@ -8,7 +8,7 @@
 - FluentValidation is wired through an MVC action filter for key write contracts.
 - Docker Compose includes PostgreSQL, Redis, API, frontend, LocalStack, and MailHog.
 - Helm includes Redis and routes `/api`, `/health`, and `/ready` to the API.
-- CI, Playwright smoke, k6 smoke, and Terraform placeholders are present.
+- CI, Playwright workflow coverage, k6 smoke, and Terraform placeholders are present.
 - OrderWorkflow, Production, and Catalog use cases now orchestrate repositories instead of direct EF service classes.
 - `IClock`, `IUnitOfWork`, `outbox_messages`, and an Outbox retry worker are present for transactional side-effect handling.
 - SMTP, S3-compatible storage, and QuestPDF provider implementations are wired behind options.
@@ -30,12 +30,12 @@
 - Application, Infrastructure, API controllers, and tests are grouped by bounded module folders so business areas are easier to navigate and evolve independently.
 - Full backend tests pass under OrbStack/Testcontainers, and an isolated fresh `docker compose up --build` validates API/frontend/PostgreSQL/Redis/LocalStack/MailHog health without touching the existing dev stack.
 - The previous coupled `CatalogUseCase` is split into `CustomerUseCase` and `ProductCatalogUseCase`, with separate repository ports, infrastructure repositories, DI registrations, controllers, and module tests.
-- The local project folder is initialized as a Git repository and staged for an initial baseline commit.
+- The local project folder is initialized as a Git repository, connected to GitHub, and pushed to `origin/main`.
 - Frontend P0 Vitest coverage now includes login success/failure, role guard redirects, admin batch-to-production, admin price-book save/repricing, and customer standing-order effective price rendering.
+- GitHub Actions CI is green on `main` for backend, frontend, API contract, and Helm checks.
 
 ## Remaining
 
-- Create the initial commit and connect a remote repository when the target Git provider/repo name is confirmed.
 - Add real AWS environment values for SES domain/SNS topic/IAM role before production deployment.
 - Replace the remaining CSV/download helper fetches with typed non-JSON OpenAPI helpers if binary/export contract enforcement becomes necessary.
-- Expand Playwright and k6 coverage beyond smoke tests.
+- Expand k6 coverage beyond smoke tests.
