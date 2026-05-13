@@ -57,6 +57,7 @@ Database tables and relationships are documented in `docs/database-schema.md`; b
 - Phase 27: Backend split into Api, Contracts, Domain, Application, Infrastructure, and Tests projects with enforced dependency-boundary architecture tests.
 - Phase 28: Customer invoice/statement detail APIs and pages, customer portal dashboard/list Query wiring, and customer-only detail authorization coverage.
 - Phase 29: Frontend download flows split API-authenticated contract downloads from external presigned downloads, with typed OpenAPI query contracts for CSV exports.
+- Phase 30: Non-AWS stability hardening with broader k6 API smoke coverage, Customer portal Playwright detail coverage, Helm lint, Docker Compose config checks, and backend/frontend Docker image build checks in CI.
 
 ## Local Development
 
@@ -107,13 +108,18 @@ pnpm --filter frontend exec tsc --noEmit
 pnpm --filter frontend test
 pnpm --filter frontend build
 pnpm test:e2e
+pnpm test:perf
 pnpm check:api
 pnpm smoke:api
+helm lint infra/helm/storycoffee
 helm template storycoffee infra/helm/storycoffee
 docker compose -f infra/docker-compose.yml config
+docker compose -f infra/docker-compose.test.yml config
+docker build -f backend/src/StoryCoffee.Api/Dockerfile -t storycoffee-api:local .
+docker build -f frontend/Dockerfile -t storycoffee-frontend:local .
 ```
 
-`pnpm check:api` expects the API Swagger endpoint to be running at `STORYCOFFEE_OPENAPI_URL` or `http://localhost:5080/swagger/v1/swagger.json`. `pnpm smoke:api` expects a seeded API at `STORYCOFFEE_API_URL` or `http://localhost:5080`. `pnpm test:e2e` expects the frontend at `E2E_BASE_URL` or `http://localhost:8080` and the API at `E2E_API_BASE_URL` or `http://localhost:5080`. `helm` and `docker` must be installed locally for the final checks.
+`pnpm check:api` expects the API Swagger endpoint to be running at `STORYCOFFEE_OPENAPI_URL` or `http://localhost:5080/swagger/v1/swagger.json`. `pnpm smoke:api` expects a seeded API at `STORYCOFFEE_API_URL` or `http://localhost:5080`. `pnpm test:e2e` expects the frontend at `E2E_BASE_URL` or `http://localhost:8080` and the API at `E2E_API_BASE_URL` or `http://localhost:5080`. `pnpm test:perf` expects k6 plus a seeded API at `API_BASE_URL` or `http://localhost:5080`. `helm` and `docker` must be installed locally for the final checks.
 
 ## Engineering Scaffolds
 

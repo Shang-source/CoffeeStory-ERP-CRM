@@ -4,6 +4,7 @@ const apiBaseUrl = process.env.E2E_API_BASE_URL ?? 'http://localhost:5080';
 const adminEmail = 'admin@storycoffee.co.nz';
 const customerEmail = 'john@aucklandcafe.co.nz';
 const password = 'password';
+const statementInvoiceStatuses = new Set(['Unpaid', 'PartiallyPaid', 'Overdue']);
 
 test('StoryCoffee app loads', async ({ page }) => {
   await page.goto('/');
@@ -54,6 +55,38 @@ test('admin production-to-invoice workflow is visible to customer', async ({ pag
   await expect(page.getByText('Shipped').first()).toBeVisible();
 });
 
+test('customer portal exposes financial self-service pages', async ({ page, request }) => {
+  test.setTimeout(120_000);
+
+  const admin = await apiLogin(request, adminEmail);
+  const customer = await apiLogin(request, customerEmail);
+  const adminToken = admin.accessToken;
+  const customerToken = customer.accessToken;
+  const customerId = customer.userProfile.customerId;
+  expect(customerId, 'seeded customer login should include customer id').toBeTruthy();
+
+  const invoice = await ensureCustomerOpenInvoice(request, adminToken, customerToken, customerId);
+  const statement = await ensureCustomerStatement(request, adminToken, customerToken, invoice.customerId);
+
+  await loginThroughUi(page, customerEmail);
+  await page.goto('/customer');
+  await expect(page.getByRole('heading', { name: /Welcome,/ })).toBeVisible();
+  await expect(page.getByText('Manage your coffee orders and invoices')).toBeVisible();
+
+  await page.goto(`/customer/invoices/${invoice.id}`);
+  await expect(page.getByRole('heading', { name: `Invoice ${invoice.invoiceNumber}` })).toBeVisible();
+  await expect(page.getByText('Invoice Items')).toBeVisible();
+
+  await page.goto(`/customer/statements/${statement.id}`);
+  await expect(page.getByRole('heading', { name: `Statement ${statement.statementNumber}` })).toBeVisible();
+  await expect(page.getByText('Statement Invoices')).toBeVisible();
+
+  await page.goto('/customer/settings');
+  await expect(page.getByRole('heading', { name: 'Account Settings' })).toBeVisible();
+  await expect(page.getByText('Business Information')).toBeVisible();
+  await expect(page.getByText('Change Password')).toBeVisible();
+});
+
 async function loginThroughUi(page: Page, email: string) {
   await page.goto('/');
   await page.getByLabel('Email').fill(email);
@@ -78,6 +111,61 @@ async function generateOrderFromStandingOrder(
 
   expect(standingOrder, 'seed data should include an active standing order').toBeTruthy();
   return postJson(request, `/api/admin/standing-orders/${standingOrder.id}/generate-now`, adminToken);
+}
+
+async function ensureCustomerOpenInvoice(
+  request: APIRequestContext,
+  adminToken: string,
+  customerToken: string,
+  customerId: string,
+) {
+  const existingInvoices = await getJson(request, '/api/customer/invoices', customerToken);
+  const existingOpenInvoice = existingInvoices.find((invoice: { status: string }) => statementInvoiceStatuses.has(invoice.status));
+  if (existingOpenInvoice) {
+    return existingOpenInvoice;
+  }
+
+  const generatedOrder = await generateOrderFromStandingOrder(request, adminToken, customerId);
+  await postJson(request, '/api/admin/orders/batch-to-production', adminToken, { orderIds: [generatedOrder.id] });
+  const readyOrder = await completeProductionForOrder(request, adminToken, generatedOrder.id, generatedOrder.orderNumber);
+  const shippedOrder = await postJson(request, `/api/admin/orders/${readyOrder.id}/mark-shipped`, adminToken);
+  await postJson(request, `/api/admin/orders/${shippedOrder.id}/generate-invoice`, adminToken);
+  await postJson(request, `/api/admin/orders/${shippedOrder.id}/send-invoice`, adminToken);
+
+  await expect.poll(async () => {
+    const invoices = await getJson(request, '/api/customer/invoices', customerToken);
+    const invoice = invoices.find((entry: { orderId: string; status: string }) =>
+      entry.orderId === shippedOrder.id && statementInvoiceStatuses.has(entry.status)
+    );
+    return invoice?.id ?? '';
+  }).not.toBe('');
+
+  const invoices = await getJson(request, '/api/customer/invoices', customerToken);
+  return invoices.find((entry: { orderId: string }) => entry.orderId === shippedOrder.id);
+}
+
+async function ensureCustomerStatement(
+  request: APIRequestContext,
+  adminToken: string,
+  customerToken: string,
+  customerId: string,
+) {
+  const existingStatements = await getJson(request, '/api/customer/statements', customerToken);
+  const existingStatement = existingStatements.find((statement: { customerId: string }) => statement.customerId === customerId);
+  if (existingStatement) {
+    return existingStatement;
+  }
+
+  const generatedStatements = await postJson(request, '/api/admin/statements/generate-weekly', adminToken);
+  const generatedStatement = generatedStatements.find((statement: { customerId: string }) => statement.customerId === customerId);
+  if (generatedStatement) {
+    return generatedStatement;
+  }
+
+  const statements = await getJson(request, '/api/customer/statements', customerToken);
+  const statement = statements.find((entry: { customerId: string }) => entry.customerId === customerId);
+  expect(statement, 'customer should have a generated statement for an open invoice').toBeTruthy();
+  return statement;
 }
 
 async function completeProductionForOrder(

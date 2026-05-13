@@ -86,9 +86,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: azure/setup-helm@v4
+      - run: helm lint infra/helm/storycoffee
       - run: |
           helm template storycoffee infra/helm/storycoffee
           helm template storycoffee infra/helm/storycoffee -f infra/helm/storycoffee/values-local.yaml
           helm template storycoffee infra/helm/storycoffee -f infra/helm/storycoffee/values-dev.yaml
           helm template storycoffee infra/helm/storycoffee -f infra/helm/storycoffee/values-staging.yaml
           helm template storycoffee infra/helm/storycoffee -f infra/helm/storycoffee/values-prod.yaml
+
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose -f infra/docker-compose.yml config
+      - run: docker compose -f infra/docker-compose.test.yml config
+
+  containers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f backend/src/StoryCoffee.Api/Dockerfile -t storycoffee-api:ci .
+      - run: docker build -f frontend/Dockerfile -t storycoffee-frontend:ci .
