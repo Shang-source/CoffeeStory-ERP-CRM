@@ -1,20 +1,15 @@
 import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Divider } from '@mui/material';
 import { Download, Visibility } from '@mui/icons-material';
 import { toast } from 'sonner';
-import { getCustomerStatements } from '@/entities/statement/api/statementApi';
+import { useCustomerStatementsQuery } from '@/entities/statement/api/statementQueries';
 import { downloadCustomerStatementPdf } from '@/features/statementActions/api/statementActionsApi';
 import { Link } from 'react-router';
-import { useQuery } from '@tanstack/react-query';
-import { queryKeys } from '@/shared/api/queryKeys';
 import { LoadingState } from '@/shared/ui/LoadingState';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { EmptyState } from '@/shared/ui/EmptyState';
 
 export default function CustomerStatements() {
-  const { data: statements = [], isLoading, error } = useQuery({
-    queryKey: queryKeys.customerStatements,
-    queryFn: getCustomerStatements,
-  });
+  const { data: statements = [], isLoading, error } = useCustomerStatementsQuery();
 
   const handleDownload = async (statementId: string) => {
     try {

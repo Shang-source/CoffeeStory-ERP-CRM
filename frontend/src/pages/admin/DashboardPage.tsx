@@ -2,19 +2,14 @@ import { Box, Typography, Grid, Card, CardContent, Table, TableBody, TableCell, 
 import { TrendingUp, ShoppingCart, LocalShipping, Warning } from '@mui/icons-material';
 import { formatOrderStatus, getOrderStatusColor } from '@/shared/status/statusFormat';
 import { useNavigate } from 'react-router';
-import { getAdminDashboard } from '@/entities/dashboard/api/dashboardApi';
-import { useQuery } from '@tanstack/react-query';
-import { queryKeys } from '@/shared/api/queryKeys';
+import { useAdminDashboardQuery } from '@/entities/dashboard/api/dashboardQueries';
 import { LoadingState } from '@/shared/ui/LoadingState';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { EmptyState } from '@/shared/ui/EmptyState';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
-  const { data: dashboard, isLoading, error } = useQuery({
-    queryKey: queryKeys.adminDashboard,
-    queryFn: getAdminDashboard,
-  });
+  const { data: dashboard, isLoading, error } = useAdminDashboardQuery();
 
   if (isLoading) {
     return <LoadingState />;

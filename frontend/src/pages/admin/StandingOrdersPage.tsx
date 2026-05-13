@@ -25,14 +25,14 @@ import {
 } from '@mui/material';
 import { Add, Cancel as CancelIcon, Delete, Edit, Pause, PlayArrow, RestartAlt } from '@mui/icons-material';
 import { toast } from 'sonner';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { OrderFrequency, StandingOrder, StandingOrderStatus } from '@/entities/types';
 import { useAdminCustomersQuery } from '@/entities/customer/api/customerQueries';
 import { useProductsQuery } from '@/entities/product/api/productQueries';
 import { useAdminStandingOrdersQuery } from '@/entities/standingOrder/api/standingOrderQueries';
-import { createAdminStandingOrder, type StandingOrderPayload, updateAdminStandingOrder } from '@/features/standingOrderEditor/api/standingOrderEditorApi';
-import { cancelStandingOrder, generateStandingOrderNow, pauseStandingOrder, resumeStandingOrder } from '@/features/standingOrderLifecycle/api/standingOrderLifecycleApi';
-import { queryKeys } from '@/shared/api/queryKeys';
+import { type StandingOrderPayload } from '@/features/standingOrderEditor/api/standingOrderEditorApi';
+import { useSaveAdminStandingOrderMutation } from '@/features/standingOrderEditor/model/standingOrderEditorMutations';
+import { cancelStandingOrder, pauseStandingOrder, resumeStandingOrder } from '@/features/standingOrderLifecycle/api/standingOrderLifecycleApi';
+import { useGenerateStandingOrderNowMutation, useStandingOrderStatusActionMutation } from '@/features/standingOrderLifecycle/model/standingOrderLifecycleMutations';
 
 const frequencies: OrderFrequency[] = ['Weekly', 'Fortnightly', 'Monthly', 'ManualOnly'];
 const statuses: StandingOrderStatus[] = ['Active', 'Paused', 'Cancelled'];
@@ -64,7 +64,6 @@ const emptyForm: StandingOrderFormState = {
 };
 
 export default function StandingOrders() {
-  const queryClient = useQueryClient();
   const standingOrdersQuery = useAdminStandingOrdersQuery();
   const customersQuery = useAdminCustomersQuery();
   const productsQuery = useProductsQuery();
@@ -76,47 +75,9 @@ export default function StandingOrders() {
   const products = (productsQuery.data ?? []).filter((product) => product.isActive);
   const isLoading = standingOrdersQuery.isLoading || customersQuery.isLoading || productsQuery.isLoading;
   const error = standingOrdersQuery.error ?? customersQuery.error ?? productsQuery.error;
-
-  const updateStandingOrderCache = (updatedOrder: StandingOrder) => {
-    queryClient.setQueryData<StandingOrder[]>(queryKeys.adminStandingOrders, (currentOrders = []) =>
-      currentOrders.map((order) => order.id === updatedOrder.id ? updatedOrder : order)
-    );
-  };
-
-  const manualGenerateMutation = useMutation({
-    mutationFn: (standingOrderId: string) => generateStandingOrderNow(standingOrderId),
-    onSuccess: async (order) => {
-      toast.success(`Order ${order.orderNumber} generated manually`);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.adminStandingOrders });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.adminOrders });
-    },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to generate order'),
-  });
-
-  const statusActionMutation = useMutation({
-    mutationFn: ({ action }: { action: () => Promise<StandingOrder>; successMessage: string }) => action(),
-    onSuccess: (updatedOrder, variables) => {
-      updateStandingOrderCache(updatedOrder);
-      toast.success(variables.successMessage);
-    },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to update standing order'),
-  });
-
-  const saveStandingOrderMutation = useMutation({
-    mutationFn: ({ standingOrderId, payload }: { standingOrderId?: string; payload: StandingOrderPayload; isEditing: boolean }) =>
-      standingOrderId ? updateAdminStandingOrder(standingOrderId, payload) : createAdminStandingOrder(payload),
-    onSuccess: (saved, variables) => {
-      queryClient.setQueryData<StandingOrder[]>(queryKeys.adminStandingOrders, (currentOrders = []) => {
-        const exists = currentOrders.some((order) => order.id === saved.id);
-        return exists
-          ? currentOrders.map((order) => order.id === saved.id ? saved : order)
-          : [...currentOrders, saved].sort((left, right) => (left.customer?.businessName ?? '').localeCompare(right.customer?.businessName ?? ''));
-      });
-      toast.success(variables.isEditing ? 'Standing order updated' : 'Standing order created');
-      setIsDialogOpen(false);
-    },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to save standing order'),
-  });
+  const manualGenerateMutation = useGenerateStandingOrderNowMutation();
+  const statusActionMutation = useStandingOrderStatusActionMutation();
+  const saveStandingOrderMutation = useSaveAdminStandingOrderMutation(() => setIsDialogOpen(false));
 
   const handleManualGenerate = async (orderId: string) => {
     try {

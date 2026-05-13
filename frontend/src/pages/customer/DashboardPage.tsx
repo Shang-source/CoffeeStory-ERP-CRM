@@ -2,20 +2,14 @@ import { Box, Typography, Card, CardContent, Button, Chip, Divider, Grid } from 
 import { Link } from 'react-router';
 import { ShoppingCart, Receipt, Warning } from '@mui/icons-material';
 import { useAuth } from '@/app/providers/AuthProvider';
-import { getCustomerDashboard } from '@/entities/dashboard/api/dashboardApi';
-import { useQuery } from '@tanstack/react-query';
-import { queryKeys } from '@/shared/api/queryKeys';
+import { useCustomerDashboardQuery } from '@/entities/dashboard/api/dashboardQueries';
 import { LoadingState } from '@/shared/ui/LoadingState';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { EmptyState } from '@/shared/ui/EmptyState';
 
 export default function CustomerDashboard() {
   const { user } = useAuth();
-  const { data: dashboard, isLoading, error } = useQuery({
-    queryKey: queryKeys.customerDashboard,
-    queryFn: getCustomerDashboard,
-    enabled: Boolean(user?.customerId),
-  });
+  const { data: dashboard, isLoading, error } = useCustomerDashboardQuery(Boolean(user?.customerId));
 
   if (!user || !user.customerId) {
     return <Typography>Access denied</Typography>;

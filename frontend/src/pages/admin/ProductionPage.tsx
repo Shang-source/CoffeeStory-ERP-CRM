@@ -4,56 +4,20 @@ import { Print, Download, PlayArrow, Edit as EditIcon, CheckCircle } from '@mui/
 import { formatProductionStatus, getProductionStatusColor } from '@/shared/status/statusFormat';
 import { ProductionItem } from '@/entities/types';
 import { toast } from 'sonner';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCurrentProductionQuery } from '@/entities/production/api/productionQueries';
-import { completeProduction, startProduction, updateProducedQuantity } from '@/features/productionItemUpdate/api/productionItemUpdateApi';
-import { queryKeys } from '@/shared/api/queryKeys';
+import { useCompleteProductionMutation, useStartProductionMutation, useUpdateProducedQuantityMutation } from '@/features/productionItemUpdate/model/productionItemUpdateMutations';
 
 export default function ProductionList() {
-  const queryClient = useQueryClient();
   const { data: productionItems = [], isLoading, error } = useCurrentProductionQuery();
   const [selectedItem, setSelectedItem] = useState<ProductionItem | null>(null);
   const [updateDialog, setUpdateDialog] = useState(false);
   const [updateQuantity, setUpdateQuantity] = useState('');
-
-  const replaceProductionItem = (updatedItem: ProductionItem) => {
-    queryClient.setQueryData<ProductionItem[]>(queryKeys.production, (items = []) =>
-      items.map((item) => item.productId === updatedItem.productId ? updatedItem : item)
-    );
-  };
-
-  const startProductionMutation = useMutation({
-    mutationFn: (productId: string) => startProduction(productId),
-    onSuccess: (updated) => {
-      replaceProductionItem(updated);
-      toast.success(`Started production for ${updated.productName}`);
-    },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to start production'),
+  const startProductionMutation = useStartProductionMutation();
+  const updateQuantityMutation = useUpdateProducedQuantityMutation(() => {
+    setUpdateDialog(false);
+    setSelectedItem(null);
   });
-
-  const updateQuantityMutation = useMutation({
-    mutationFn: ({ productId, producedQuantity }: { productId: string; producedQuantity: number }) =>
-      updateProducedQuantity(productId, producedQuantity),
-    onSuccess: async (updated) => {
-      replaceProductionItem(updated);
-      toast.success(`Updated produced quantity for ${updated.productName}`);
-      setUpdateDialog(false);
-      setSelectedItem(null);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.production });
-    },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to update produced quantity'),
-  });
-
-  const completeProductionMutation = useMutation({
-    mutationFn: (productId: string) => completeProduction(productId),
-    onSuccess: async (updated) => {
-      replaceProductionItem(updated);
-      toast.success(`${updated.productName} marked as completed`);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.production });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.adminOrders });
-    },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to complete production item'),
-  });
+  const completeProductionMutation = useCompleteProductionMutation();
 
   const handleStartProduction = async (item: ProductionItem) => {
     startProductionMutation.mutate(item.productId);

@@ -5,10 +5,8 @@ import { Link } from 'react-router';
 import { formatInvoiceStatus, getInvoiceStatusColor } from '@/shared/status/statusFormat';
 import { toast } from 'sonner';
 import { Invoice } from '@/entities/types';
-import { getCustomerInvoices } from '@/entities/invoice/api/invoiceApi';
+import { useCustomerInvoicesQuery } from '@/entities/invoice/api/invoiceQueries';
 import { downloadCustomerInvoicePdf } from '@/features/invoiceActions/api/invoiceActionsApi';
-import { useQuery } from '@tanstack/react-query';
-import { queryKeys } from '@/shared/api/queryKeys';
 import { LoadingState } from '@/shared/ui/LoadingState';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { EmptyState } from '@/shared/ui/EmptyState';
@@ -108,10 +106,7 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
 }
 
 export default function CustomerInvoices() {
-  const { data: invoices = [], isLoading, error } = useQuery({
-    queryKey: queryKeys.customerInvoices,
-    queryFn: getCustomerInvoices,
-  });
+  const { data: invoices = [], isLoading, error } = useCustomerInvoicesQuery();
 
   if (isLoading) {
     return <LoadingState />;

@@ -2,10 +2,8 @@ import { Box, Button, Card, CardContent, Chip, Divider, Grid, Table, TableBody, 
 import { ArrowBack, Download } from '@mui/icons-material';
 import { Link, useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
-import { useQuery } from '@tanstack/react-query';
-import { getCustomerStatement } from '@/entities/statement/api/statementApi';
+import { useCustomerStatementQuery } from '@/entities/statement/api/statementQueries';
 import { downloadCustomerStatementPdf } from '@/features/statementActions/api/statementActionsApi';
-import { queryKeys } from '@/shared/api/queryKeys';
 import { formatInvoiceStatus, getInvoiceStatusColor } from '@/shared/status/statusFormat';
 import { LoadingState } from '@/shared/ui/LoadingState';
 import { ErrorState } from '@/shared/ui/ErrorState';
@@ -14,11 +12,7 @@ import { MoneyText } from '@/shared/ui/MoneyText';
 export default function CustomerStatementDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { data: statement, isLoading, error } = useQuery({
-    queryKey: queryKeys.customerStatement(id ?? ''),
-    queryFn: () => getCustomerStatement(id!),
-    enabled: Boolean(id),
-  });
+  const { data: statement, isLoading, error } = useCustomerStatementQuery(id);
 
   const handleDownload = async () => {
     if (!statement) {

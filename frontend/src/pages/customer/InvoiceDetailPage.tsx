@@ -2,10 +2,8 @@ import { Box, Button, Card, CardContent, Chip, Divider, Grid, Table, TableBody, 
 import { ArrowBack, Download } from '@mui/icons-material';
 import { Link, useParams } from 'react-router';
 import { toast } from 'sonner';
-import { useQuery } from '@tanstack/react-query';
-import { getCustomerInvoice } from '@/entities/invoice/api/invoiceApi';
+import { useCustomerInvoiceQuery } from '@/entities/invoice/api/invoiceQueries';
 import { downloadCustomerInvoicePdf } from '@/features/invoiceActions/api/invoiceActionsApi';
-import { queryKeys } from '@/shared/api/queryKeys';
 import { formatInvoiceStatus, getInvoiceStatusColor } from '@/shared/status/statusFormat';
 import { LoadingState } from '@/shared/ui/LoadingState';
 import { ErrorState } from '@/shared/ui/ErrorState';
@@ -13,11 +11,7 @@ import { MoneyText } from '@/shared/ui/MoneyText';
 
 export default function CustomerInvoiceDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { data: invoice, isLoading, error } = useQuery({
-    queryKey: queryKeys.customerInvoice(id ?? ''),
-    queryFn: () => getCustomerInvoice(id!),
-    enabled: Boolean(id),
-  });
+  const { data: invoice, isLoading, error } = useCustomerInvoiceQuery(id);
 
   const handleDownload = async () => {
     if (!invoice) {

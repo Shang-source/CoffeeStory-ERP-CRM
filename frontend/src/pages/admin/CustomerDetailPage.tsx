@@ -4,48 +4,27 @@ import { useParams, Link } from 'react-router';
 import { Edit, ArrowBack, Send } from '@mui/icons-material';
 import { toast } from 'sonner';
 import EditCustomerDialog from '@/features/customerEdit/ui/EditCustomerDialog';
-import type { Customer, CustomerPriceBookItem, StandingOrder } from '@/entities/types';
-import { getAdminCustomer, updateAdminCustomer } from '@/entities/customer/api/customerApi';
-import { getAdminInvoices } from '@/entities/invoice/api/invoiceApi';
-import { getAdminOrders } from '@/entities/order/api/orderApi';
-import { getAdminStandingOrders } from '@/entities/standingOrder/api/standingOrderApi';
-import { sendAdminCustomerInvite } from '@/features/customerInvite/api/customerInviteApi';
-import { getAdminCustomerPriceBook, updateAdminCustomerPriceBook } from '@/features/customerPriceBook/api/customerPriceBookApi';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { queryKeys } from '@/shared/api/queryKeys';
+import type { Customer, CustomerPriceBookItem } from '@/entities/types';
+import { useAdminCustomerQuery } from '@/entities/customer/api/customerQueries';
+import { useAdminInvoicesQuery } from '@/entities/invoice/api/invoiceQueries';
+import { useAdminOrdersQuery } from '@/entities/order/api/orderQueries';
+import { useAdminStandingOrdersQuery } from '@/entities/standingOrder/api/standingOrderQueries';
+import { useUpdateAdminCustomerMutation } from '@/features/customerEdit/model/customerEditMutations';
+import { useSendAdminCustomerInviteMutation } from '@/features/customerInvite/model/customerInviteMutations';
+import { useSaveCustomerPriceBookMutation } from '@/features/customerPriceBook/model/customerPriceBookMutations';
+import { useAdminCustomerPriceBookQuery } from '@/features/customerPriceBook/model/customerPriceBookQueries';
 
 export default function CustomerDetail() {
   const { id } = useParams();
-  const queryClient = useQueryClient();
   const [priceBookItems, setPriceBookItems] = useState<CustomerPriceBookItem[]>([]);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const hasCustomerId = Boolean(id);
 
-  const customerQuery = useQuery({
-    queryKey: queryKeys.adminCustomer(id ?? ''),
-    queryFn: () => getAdminCustomer(id!),
-    enabled: hasCustomerId,
-  });
-  const ordersQuery = useQuery({
-    queryKey: queryKeys.adminOrders,
-    queryFn: getAdminOrders,
-    enabled: hasCustomerId,
-  });
-  const invoicesQuery = useQuery({
-    queryKey: queryKeys.adminInvoices,
-    queryFn: getAdminInvoices,
-    enabled: hasCustomerId,
-  });
-  const standingOrdersQuery = useQuery({
-    queryKey: queryKeys.adminStandingOrders,
-    queryFn: getAdminStandingOrders,
-    enabled: hasCustomerId,
-  });
-  const priceBookQuery = useQuery({
-    queryKey: queryKeys.adminCustomerPriceBook(id ?? ''),
-    queryFn: () => getAdminCustomerPriceBook(id!),
-    enabled: hasCustomerId,
-  });
+  const customerQuery = useAdminCustomerQuery(id);
+  const ordersQuery = useAdminOrdersQuery();
+  const invoicesQuery = useAdminInvoicesQuery(hasCustomerId);
+  const standingOrdersQuery = useAdminStandingOrdersQuery();
+  const priceBookQuery = useAdminCustomerPriceBookQuery(id);
 
   useEffect(() => {
     if (priceBookQuery.data) {
@@ -68,72 +47,9 @@ export default function CustomerDetail() {
     standingOrdersQuery.error ||
     priceBookQuery.error;
 
-  const updateCustomerMutation = useMutation({
-    mutationFn: (updatedCustomer: Customer) => updateAdminCustomer(id!, {
-      businessName: updatedCustomer.businessName,
-      contactPerson: updatedCustomer.contactPerson,
-      email: updatedCustomer.email,
-      phone: updatedCustomer.phone,
-      billingAddress: updatedCustomer.billingAddress,
-      deliveryAddress: updatedCustomer.deliveryAddress,
-      paymentTerms: updatedCustomer.paymentTerms,
-      accountStatus: updatedCustomer.accountStatus,
-    }),
-    onSuccess: (savedCustomer) => {
-      queryClient.setQueryData<Customer>(queryKeys.adminCustomer(savedCustomer.id), savedCustomer);
-      queryClient.setQueryData<Customer[]>(queryKeys.adminCustomers, (current = []) =>
-        current.map((item) => item.id === savedCustomer.id ? savedCustomer : item)
-      );
-    },
-  });
-
-  const sendInviteMutation = useMutation({
-    mutationFn: sendAdminCustomerInvite,
-    onSuccess: (updatedCustomer) => {
-      queryClient.setQueryData<Customer>(queryKeys.adminCustomer(updatedCustomer.id), updatedCustomer);
-      queryClient.setQueryData<Customer[]>(queryKeys.adminCustomers, (current = []) =>
-        current.map((item) => item.id === updatedCustomer.id ? updatedCustomer : item)
-      );
-      toast.success(`Invite sent to ${updatedCustomer.email}`);
-    },
-    onError: (err) => {
-      toast.error(err instanceof Error ? err.message : 'Unable to send invite');
-    },
-  });
-
-  const savePriceBookMutation = useMutation({
-    mutationFn: () => updateAdminCustomerPriceBook(customer!.id, {
-      items: priceBookItems.map((item) => ({
-        productId: item.productId,
-        overridePrice: item.overridePrice ?? null,
-        isActive: item.isActive,
-        notes: item.notes ?? null,
-      })),
-    }),
-    onSuccess: (saved) => {
-      setPriceBookItems(saved.items);
-      queryClient.setQueryData(queryKeys.adminCustomerPriceBook(saved.customerId), saved);
-      queryClient.setQueryData<StandingOrder[]>(queryKeys.adminStandingOrders, (current = []) =>
-        current.map((order) => {
-          if (order.customerId !== saved.customerId) {
-            return order;
-          }
-
-          return {
-            ...order,
-            items: order.items.map((item) => {
-              const priceBookItem = saved.items.find((price) => price.productId === item.productId);
-              return priceBookItem ? { ...item, unitPrice: priceBookItem.effectivePrice } : item;
-            }),
-          };
-        })
-      );
-      toast.success('Price book saved');
-    },
-    onError: (err) => {
-      toast.error(err instanceof Error ? err.message : 'Unable to save price book');
-    },
-  });
+  const updateCustomerMutation = useUpdateAdminCustomerMutation(id);
+  const sendInviteMutation = useSendAdminCustomerInviteMutation();
+  const savePriceBookMutation = useSaveCustomerPriceBookMutation(setPriceBookItems);
 
   const handleSaveCustomer = async (updatedCustomer: Customer) => {
     if (!id) {
@@ -174,7 +90,7 @@ export default function CustomerDetail() {
       return;
     }
 
-    savePriceBookMutation.mutate();
+    savePriceBookMutation.mutate({ customerId: customer.id, items: priceBookItems });
   };
 
   if (!id) {

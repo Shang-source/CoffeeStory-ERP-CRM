@@ -2,48 +2,15 @@ import { useNavigate } from 'react-router';
 import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Chip, IconButton, Alert, CircularProgress } from '@mui/material';
 import { Add, Visibility, Send, Download } from '@mui/icons-material';
 import { toast } from 'sonner';
-import { Statement } from '@/entities/types';
-import { getAdminStatements } from '@/entities/statement/api/statementApi';
-import { downloadAdminStatementPdf, generateWeeklyStatements, sendStatementEmail } from '@/features/statementActions/api/statementActionsApi';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { queryKeys } from '@/shared/api/queryKeys';
+import { useAdminStatementsQuery } from '@/entities/statement/api/statementQueries';
+import { downloadAdminStatementPdf } from '@/features/statementActions/api/statementActionsApi';
+import { useGenerateWeeklyStatementsMutation, useSendStatementEmailMutation } from '@/features/statementActions/model/statementActionsMutations';
 
 export default function Statements() {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-  const { data: statements = [], isLoading, error } = useQuery({
-    queryKey: queryKeys.adminStatements,
-    queryFn: getAdminStatements,
-  });
-
-  const generateWeeklyMutation = useMutation({
-    mutationFn: generateWeeklyStatements,
-    onSuccess: (generated) => {
-      const generatedIds = new Set(generated.map(statement => statement.id));
-      queryClient.setQueryData<Statement[]>(queryKeys.adminStatements, (current = []) => [
-        ...generated,
-        ...current.filter(statement => !generatedIds.has(statement.id)),
-      ]);
-      toast.success(`${generated.length} weekly statement${generated.length === 1 ? '' : 's'} generated`);
-    },
-    onError: (err) => {
-      toast.error(err instanceof Error ? err.message : 'Unable to generate statements');
-    },
-  });
-
-  const sendEmailMutation = useMutation({
-    mutationFn: sendStatementEmail,
-    onSuccess: (updatedStatement) => {
-      queryClient.setQueryData<Statement[]>(queryKeys.adminStatements, (current = []) =>
-        current.map(statement => statement.id === updatedStatement.id ? updatedStatement : statement)
-      );
-      queryClient.setQueryData<Statement>(queryKeys.adminStatement(updatedStatement.id), updatedStatement);
-      toast.success('Statement sent to customer');
-    },
-    onError: (err) => {
-      toast.error(err instanceof Error ? err.message : 'Unable to send statement');
-    },
-  });
+  const { data: statements = [], isLoading, error } = useAdminStatementsQuery();
+  const generateWeeklyMutation = useGenerateWeeklyStatementsMutation();
+  const sendEmailMutation = useSendStatementEmailMutation();
 
   const handleGenerateWeekly = () => {
     generateWeeklyMutation.mutate();

@@ -4,10 +4,9 @@ import { Send, Download, KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-m
 import { formatInvoiceStatus, getInvoiceStatusColor } from '@/shared/status/statusFormat';
 import { toast } from 'sonner';
 import { Invoice } from '@/entities/types';
-import { getAdminInvoices } from '@/entities/invoice/api/invoiceApi';
-import { downloadAdminInvoicePdf, sendInvoiceEmail } from '@/features/invoiceActions/api/invoiceActionsApi';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { queryKeys } from '@/shared/api/queryKeys';
+import { useAdminInvoicesQuery } from '@/entities/invoice/api/invoiceQueries';
+import { downloadAdminInvoicePdf } from '@/features/invoiceActions/api/invoiceActionsApi';
+import { useSendInvoiceEmailMutation } from '@/features/invoiceActions/model/invoiceActionsMutations';
 
 function InvoiceRow({
   invoice,
@@ -111,24 +110,8 @@ function InvoiceRow({
 }
 
 export default function Invoices() {
-  const queryClient = useQueryClient();
-  const { data: invoices = [], isLoading, error } = useQuery({
-    queryKey: queryKeys.adminInvoices,
-    queryFn: getAdminInvoices,
-  });
-
-  const sendEmailMutation = useMutation({
-    mutationFn: sendInvoiceEmail,
-    onSuccess: (updatedInvoice) => {
-      queryClient.setQueryData<Invoice[]>(queryKeys.adminInvoices, (currentInvoices = []) =>
-        currentInvoices.map((invoice) => invoice.id === updatedInvoice.id ? updatedInvoice : invoice)
-      );
-      toast.success(`Invoice ${updatedInvoice.invoiceNumber} sent to ${updatedInvoice.customer?.email ?? 'customer'}`);
-    },
-    onError: (err) => {
-      toast.error(err instanceof Error ? err.message : 'Unable to send invoice');
-    },
-  });
+  const { data: invoices = [], isLoading, error } = useAdminInvoicesQuery();
+  const sendEmailMutation = useSendInvoiceEmailMutation();
 
   if (isLoading) {
     return (

@@ -3,17 +3,14 @@ import { toast } from 'sonner';
 import { useAuth } from '@/app/providers/AuthProvider';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Customer } from '@/entities/types';
-import { updateCustomerProfile } from '@/entities/customer/api/customerApi';
 import { useCustomerProfileQuery } from '@/entities/customer/api/customerQueries';
-import { changeCustomerPassword } from '@/features/passwordChange/api/passwordChangeApi';
-import { queryKeys } from '@/shared/api/queryKeys';
+import { useUpdateCustomerProfileMutation } from '@/features/customerEdit/model/customerEditMutations';
+import { useChangeCustomerPasswordMutation } from '@/features/passwordChange/model/passwordChangeMutations';
 
 export default function AccountSettings() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const queryClient = useQueryClient();
   const profileQuery = useCustomerProfileQuery(Boolean(user?.customerId));
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [passwordForm, setPasswordForm] = useState({
@@ -28,24 +25,10 @@ export default function AccountSettings() {
     }
   }, [profileQuery.data]);
 
-  const updateProfileMutation = useMutation({
-    mutationFn: (customerProfile: Customer) => updateCustomerProfile(customerProfile),
-    onSuccess: (updatedCustomer) => {
-      queryClient.setQueryData<Customer>(queryKeys.customerProfile, updatedCustomer);
-      setCustomer(updatedCustomer);
-      toast.success('Account settings updated successfully');
-    },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to update account settings'),
-  });
-
-  const changePasswordMutation = useMutation({
-    mutationFn: (passwordChange: typeof passwordForm) => changeCustomerPassword(passwordChange),
-    onSuccess: () => {
-      toast.success('Password changed. Please sign in again.');
-      logout();
-      navigate('/');
-    },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to change password'),
+  const updateProfileMutation = useUpdateCustomerProfileMutation(setCustomer);
+  const changePasswordMutation = useChangeCustomerPasswordMutation(() => {
+    logout();
+    navigate('/');
   });
 
   const handleSave = async () => {

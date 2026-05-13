@@ -2,16 +2,12 @@ import { useState } from 'react';
 import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, Button, Dialog, DialogTitle, DialogContent, DialogActions, TextField, MenuItem, Alert, CircularProgress } from '@mui/material';
 import { CheckCircle, Undo, Warning } from '@mui/icons-material';
 import { formatInvoiceStatus, getInvoiceStatusColor } from '@/shared/status/statusFormat';
-import { toast } from 'sonner';
 import { Invoice } from '@/entities/types';
-import { getAdminInvoices } from '@/entities/invoice/api/invoiceApi';
-import { markOverdueInvoices } from '@/features/invoiceActions/api/invoiceActionsApi';
-import { recordInvoicePayment, voidInvoicePayment } from '@/features/paymentRecord/api/paymentRecordApi';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { queryKeys } from '@/shared/api/queryKeys';
+import { useAdminInvoicesQuery } from '@/entities/invoice/api/invoiceQueries';
+import { useMarkOverdueInvoicesMutation } from '@/features/invoiceActions/model/invoiceActionsMutations';
+import { useRecordInvoicePaymentMutation, useVoidInvoicePaymentMutation } from '@/features/paymentRecord/model/paymentRecordMutations';
 
 export default function Payments() {
-  const queryClient = useQueryClient();
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [paymentData, setPaymentData] = useState({
@@ -22,61 +18,13 @@ export default function Payments() {
     note: '',
   });
 
-  const { data: invoices = [], isLoading, error } = useQuery({
-    queryKey: queryKeys.adminInvoices,
-    queryFn: getAdminInvoices,
+  const { data: invoices = [], isLoading, error } = useAdminInvoicesQuery();
+  const recordPaymentMutation = useRecordInvoicePaymentMutation(() => {
+    setOpenDialog(false);
+    setSelectedInvoice(null);
   });
-
-  const updateInvoiceCache = (updatedInvoice: Invoice) => {
-    queryClient.setQueryData<Invoice[]>(queryKeys.adminInvoices, (currentInvoices = []) =>
-      currentInvoices.map((invoice) => invoice.id === updatedInvoice.id ? updatedInvoice : invoice)
-    );
-  };
-
-  const recordPaymentMutation = useMutation({
-    mutationFn: ({ invoiceId, payload }: {
-      invoiceId: string;
-      payload: {
-        amount: number;
-        paymentDate: string;
-        paymentMethod: string;
-        reference: string;
-        note?: string;
-      };
-    }) => recordInvoicePayment(invoiceId, payload),
-    onSuccess: (updatedInvoice) => {
-      updateInvoiceCache(updatedInvoice);
-      toast.success(`Payment of $${paymentData.amount} recorded for invoice ${updatedInvoice.invoiceNumber}`);
-      setOpenDialog(false);
-      setSelectedInvoice(null);
-    },
-    onError: (err) => {
-      toast.error(err instanceof Error ? err.message : 'Unable to record payment');
-    },
-  });
-
-  const markOverdueMutation = useMutation({
-    mutationFn: markOverdueInvoices,
-    onSuccess: async (result) => {
-      await queryClient.invalidateQueries({ queryKey: queryKeys.adminInvoices });
-      toast.success(`${result.updatedCount} invoice(s) marked overdue`);
-    },
-    onError: (err) => {
-      toast.error(err instanceof Error ? err.message : 'Unable to mark overdue invoices');
-    },
-  });
-
-  const voidPaymentMutation = useMutation({
-    mutationFn: ({ invoiceId, paymentId, reason }: { invoiceId: string; paymentId: string; reason: string }) =>
-      voidInvoicePayment(invoiceId, paymentId, reason),
-    onSuccess: (updatedInvoice) => {
-      updateInvoiceCache(updatedInvoice);
-      toast.success('Payment voided');
-    },
-    onError: (err) => {
-      toast.error(err instanceof Error ? err.message : 'Unable to void payment');
-    },
-  });
+  const markOverdueMutation = useMarkOverdueInvoicesMutation();
+  const voidPaymentMutation = useVoidInvoicePaymentMutation();
 
   const unpaidInvoices = invoices.filter(inv => inv.status !== 'Paid' && inv.status !== 'Cancelled');
   const recordedPayments = invoices.flatMap((invoice) =>
@@ -102,6 +50,7 @@ export default function Payments() {
 
     recordPaymentMutation.mutate({
       invoiceId: selectedInvoice.id,
+      amountLabel: paymentData.amount,
       payload: {
         amount: Number(paymentData.amount),
         paymentDate: new Date(paymentData.paymentDate).toISOString(),

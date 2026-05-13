@@ -1,48 +1,21 @@
 import { useState } from 'react';
 import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Chip, IconButton, Alert, CircularProgress } from '@mui/material';
 import { Add, Archive, Edit } from '@mui/icons-material';
-import { toast } from 'sonner';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Product } from '@/entities/types';
 import ProductDialog from '@/features/productCreateEdit/ui/ProductDialog';
 import ConfirmDialog from '@/shared/ui/ConfirmDialog/ConfirmDialog';
 import { useAdminProductsQuery } from '@/entities/product/api/productQueries';
-import { archiveAdminProduct } from '@/features/productArchive/api/productArchiveApi';
-import { createAdminProduct, type ProductPayload, updateAdminProduct } from '@/features/productCreateEdit/api/productCreateEditApi';
-import { queryKeys } from '@/shared/api/queryKeys';
+import { type ProductPayload } from '@/features/productCreateEdit/api/productCreateEditApi';
+import { useArchiveAdminProductMutation } from '@/features/productArchive/model/productArchiveMutations';
+import { useSaveAdminProductMutation } from '@/features/productCreateEdit/model/productCreateEditMutations';
 
 export default function Products() {
-  const queryClient = useQueryClient();
   const { data: products = [], isLoading, error } = useAdminProductsQuery();
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [productToArchive, setProductToArchive] = useState<Product | null>(null);
-
-  const saveProductMutation = useMutation({
-    mutationFn: ({ productId, product }: { productId?: string; product: ProductPayload }) =>
-      productId ? updateAdminProduct(productId, product) : createAdminProduct(product),
-    onSuccess: (savedProduct) => {
-      queryClient.setQueryData<Product[]>(queryKeys.adminProducts, (currentProducts = []) => {
-        const exists = currentProducts.some((product) => product.id === savedProduct.id);
-        const nextProducts = exists
-          ? currentProducts.map(product => product.id === savedProduct.id ? savedProduct : product)
-          : [...currentProducts, savedProduct];
-        return nextProducts.sort((a, b) => a.name.localeCompare(b.name));
-      });
-    },
-  });
-
-  const archiveProductMutation = useMutation({
-    mutationFn: (productId: string) => archiveAdminProduct(productId),
-    onSuccess: (archivedProduct) => {
-      queryClient.setQueryData<Product[]>(queryKeys.adminProducts, (currentProducts = []) =>
-        currentProducts.map((item) => item.id === archivedProduct.id ? archivedProduct : item)
-      );
-      toast.success(`${archivedProduct.name} archived`);
-      setProductToArchive(null);
-    },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to archive product'),
-  });
+  const saveProductMutation = useSaveAdminProductMutation();
+  const archiveProductMutation = useArchiveAdminProductMutation(() => setProductToArchive(null));
 
   const handleAdd = () => {
     setSelectedProduct(null);

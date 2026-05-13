@@ -2,15 +2,12 @@ import { useEffect, useState } from 'react';
 import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, TextField, Select, MenuItem, FormControl, InputLabel, IconButton, Chip, Dialog, DialogTitle, DialogContent, DialogActions, Grid, Alert, CircularProgress } from '@mui/material';
 import { Add, Delete, Edit, Save } from '@mui/icons-material';
 import { toast } from 'sonner';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { OrderFrequency, StandingOrder } from '@/entities/types';
 import { useCustomerProductsQuery } from '@/entities/product/api/productQueries';
 import { useCustomerStandingOrderQuery } from '@/entities/standingOrder/api/standingOrderQueries';
-import { updateCustomerStandingOrder } from '@/features/standingOrderEditor/api/standingOrderEditorApi';
-import { queryKeys } from '@/shared/api/queryKeys';
+import { useSaveCustomerStandingOrderMutation } from '@/features/standingOrderEditor/model/standingOrderEditorMutations';
 
 export default function StandingOrderPage() {
-  const queryClient = useQueryClient();
   const standingOrderQuery = useCustomerStandingOrderQuery();
   const productsQuery = useCustomerProductsQuery();
   const [standingOrder, setStandingOrder] = useState<StandingOrder | null>(null);
@@ -27,15 +24,9 @@ export default function StandingOrderPage() {
     }
   }, [standingOrderQuery.data]);
 
-  const saveStandingOrderMutation = useMutation({
-    mutationFn: (standingOrder: StandingOrder) => updateCustomerStandingOrder(standingOrder),
-    onSuccess: (updated) => {
-      queryClient.setQueryData<StandingOrder>(queryKeys.customerStandingOrder, updated);
-      setStandingOrder(updated);
-      setIsEditing(false);
-      toast.success('Standing order updated successfully');
-    },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to save standing order'),
+  const saveStandingOrderMutation = useSaveCustomerStandingOrderMutation((updated) => {
+    setStandingOrder(updated);
+    setIsEditing(false);
   });
 
   const handleSave = async () => {

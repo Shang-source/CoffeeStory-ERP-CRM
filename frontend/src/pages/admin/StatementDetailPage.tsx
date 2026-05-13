@@ -3,29 +3,15 @@ import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableC
 import { Send, Download, ArrowBack } from '@mui/icons-material';
 import { formatInvoiceStatus, getInvoiceStatusColor } from '@/shared/status/statusFormat';
 import { toast } from 'sonner';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Statement } from '@/entities/types';
 import { useAdminStatementQuery } from '@/entities/statement/api/statementQueries';
-import { downloadAdminStatementPdf, sendStatementEmail } from '@/features/statementActions/api/statementActionsApi';
-import { queryKeys } from '@/shared/api/queryKeys';
+import { downloadAdminStatementPdf } from '@/features/statementActions/api/statementActionsApi';
+import { useSendStatementEmailMutation } from '@/features/statementActions/model/statementActionsMutations';
 
 export default function StatementDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const { data: statement, isLoading, error } = useAdminStatementQuery(id);
-
-  const sendStatementMutation = useMutation({
-    mutationFn: (statementId: string) => sendStatementEmail(statementId),
-    onSuccess: (updatedStatement) => {
-      queryClient.setQueryData<Statement>(queryKeys.adminStatement(updatedStatement.id), updatedStatement);
-      queryClient.setQueryData<Statement[]>(queryKeys.adminStatements, (current = []) =>
-        current.map((statementItem) => statementItem.id === updatedStatement.id ? updatedStatement : statementItem)
-      );
-      toast.success('Statement sent to customer');
-    },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to send statement'),
-  });
+  const sendStatementMutation = useSendStatementEmailMutation();
 
   const handleSendStatement = async () => {
     if (!statement) {
