@@ -16,9 +16,13 @@ builder.Services.AddStoryCoffeeApi(builder.Configuration);
 
 var app = builder.Build();
 
-if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))
 {
     app.UseSwagger();
+}
+
+if (app.Environment.IsDevelopment())
+{
     app.UseSwaggerUI();
 }
 
