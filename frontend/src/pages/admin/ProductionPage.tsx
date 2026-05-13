@@ -1,49 +1,65 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Chip, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Alert, CircularProgress } from '@mui/material';
 import { Print, Download, PlayArrow, Edit as EditIcon, CheckCircle } from '@mui/icons-material';
 import { formatProductionStatus, getProductionStatusColor } from '@/shared/status/statusFormat';
 import { ProductionItem } from '@/entities/types';
 import { toast } from 'sonner';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { getCurrentProduction } from '@/entities/production/api/productionApi';
 import { completeProduction, startProduction, updateProducedQuantity } from '@/features/productionItemUpdate/api/productionItemUpdateApi';
+import { queryKeys } from '@/shared/api/queryKeys';
 
 export default function ProductionList() {
-  const [productionItems, setProductionItems] = useState<ProductionItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
+  const queryClient = useQueryClient();
+  const { data: productionItems = [], isLoading, error } = useQuery({
+    queryKey: queryKeys.production,
+    queryFn: getCurrentProduction,
+  });
   const [selectedItem, setSelectedItem] = useState<ProductionItem | null>(null);
   const [updateDialog, setUpdateDialog] = useState(false);
   const [updateQuantity, setUpdateQuantity] = useState('');
 
-  useEffect(() => {
-    void loadProductionItems();
-  }, []);
-
-  const loadProductionItems = async () => {
-    try {
-      setError('');
-      setProductionItems(await getCurrentProduction());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to load production list');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const replaceProductionItem = (updatedItem: ProductionItem) => {
-    setProductionItems((items) =>
+    queryClient.setQueryData<ProductionItem[]>(queryKeys.production, (items = []) =>
       items.map((item) => item.productId === updatedItem.productId ? updatedItem : item)
     );
   };
 
-  const handleStartProduction = async (item: ProductionItem) => {
-    try {
-      const updated = await startProduction(item.productId);
+  const startProductionMutation = useMutation({
+    mutationFn: (productId: string) => startProduction(productId),
+    onSuccess: (updated) => {
       replaceProductionItem(updated);
-      toast.success(`Started production for ${item.productName}`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to start production');
-    }
+      toast.success(`Started production for ${updated.productName}`);
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to start production'),
+  });
+
+  const updateQuantityMutation = useMutation({
+    mutationFn: ({ productId, producedQuantity }: { productId: string; producedQuantity: number }) =>
+      updateProducedQuantity(productId, producedQuantity),
+    onSuccess: async (updated) => {
+      replaceProductionItem(updated);
+      toast.success(`Updated produced quantity for ${updated.productName}`);
+      setUpdateDialog(false);
+      setSelectedItem(null);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.production });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to update produced quantity'),
+  });
+
+  const completeProductionMutation = useMutation({
+    mutationFn: (productId: string) => completeProduction(productId),
+    onSuccess: async (updated) => {
+      replaceProductionItem(updated);
+      toast.success(`${updated.productName} marked as completed`);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.production });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.adminOrders });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to complete production item'),
+  });
+
+  const handleStartProduction = async (item: ProductionItem) => {
+    startProductionMutation.mutate(item.productId);
   };
 
   const handleUpdateQuantity = (item: ProductionItem) => {
@@ -62,26 +78,14 @@ export default function ProductionList() {
     }
 
     try {
-      const updated = await updateProducedQuantity(selectedItem.productId, newQuantity);
-      replaceProductionItem(updated);
-      toast.success(`Updated produced quantity for ${selectedItem.productName}`);
-      setUpdateDialog(false);
-      setSelectedItem(null);
-      await loadProductionItems();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to update produced quantity');
+      await updateQuantityMutation.mutateAsync({ productId: selectedItem.productId, producedQuantity: newQuantity });
+    } catch {
+      return;
     }
   };
 
   const handleMarkCompleted = async (item: ProductionItem) => {
-    try {
-      const updated = await completeProduction(item.productId);
-      replaceProductionItem(updated);
-      toast.success(`${item.productName} marked as completed`);
-      await loadProductionItems();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to complete production item');
-    }
+    completeProductionMutation.mutate(item.productId);
   };
 
   const handlePrint = () => {
@@ -158,7 +162,7 @@ export default function ProductionList() {
         </Box>
       </Box>
 
-      {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
+      {error && <Alert severity="error" sx={{ mb: 3 }}>{error instanceof Error ? error.message : 'Unable to load production list'}</Alert>}
 
       <Card sx={{ mb: 3 }}>
         <CardContent>
@@ -258,7 +262,7 @@ export default function ProductionList() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setUpdateDialog(false)}>Cancel</Button>
-          <Button onClick={handleSaveQuantity} variant="contained" disabled={!updateQuantity}>
+          <Button onClick={handleSaveQuantity} variant="contained" disabled={!updateQuantity || updateQuantityMutation.isPending}>
             Update Quantity
           </Button>
         </DialogActions>

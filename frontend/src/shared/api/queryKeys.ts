@@ -4,6 +4,7 @@ export const queryKeys = {
   adminCustomers: ['admin', 'customers'] as const,
   adminCustomer: (customerId: string) => ['admin', 'customers', customerId] as const,
   adminCustomerPriceBook: (customerId: string) => ['admin', 'customers', customerId, 'priceBook'] as const,
+  customerProfile: ['customer', 'profile'] as const,
   adminProducts: ['admin', 'products'] as const,
   customerProducts: ['customer', 'products'] as const,
   adminStandingOrders: ['admin', 'standingOrders'] as const,
@@ -20,5 +21,7 @@ export const queryKeys = {
   customerStatement: (statementId: string) => ['customer', 'statements', statementId] as const,
   production: ['admin', 'production'] as const,
   auditLogs: ['admin', 'logs', 'audit'] as const,
+  auditLogsList: (params: unknown) => ['admin', 'logs', 'audit', params] as const,
   emailLogs: ['admin', 'logs', 'email'] as const,
+  emailLogsList: (params: unknown) => ['admin', 'logs', 'email', params] as const,
 };

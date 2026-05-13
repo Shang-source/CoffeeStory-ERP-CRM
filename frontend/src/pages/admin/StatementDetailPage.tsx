@@ -1,40 +1,35 @@
-import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Divider, Chip, CircularProgress, Alert } from '@mui/material';
 import { Send, Download, ArrowBack } from '@mui/icons-material';
 import { formatInvoiceStatus, getInvoiceStatusColor } from '@/shared/status/statusFormat';
 import { toast } from 'sonner';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Statement } from '@/entities/types';
 import { getAdminStatement } from '@/entities/statement/api/statementApi';
 import { downloadAdminStatementPdf, sendStatementEmail } from '@/features/statementActions/api/statementActionsApi';
+import { queryKeys } from '@/shared/api/queryKeys';
 
 export default function StatementDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [statement, setStatement] = useState<Statement | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
+  const queryClient = useQueryClient();
+  const { data: statement, isLoading, error } = useQuery({
+    queryKey: queryKeys.adminStatement(id ?? ''),
+    queryFn: () => getAdminStatement(id ?? ''),
+    enabled: Boolean(id),
+  });
 
-  useEffect(() => {
-    const loadStatement = async () => {
-      if (!id) {
-        setError('Statement id is missing');
-        setIsLoading(false);
-        return;
-      }
-
-      try {
-        setError('');
-        setStatement(await getAdminStatement(id));
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unable to load statement');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    void loadStatement();
-  }, [id]);
+  const sendStatementMutation = useMutation({
+    mutationFn: (statementId: string) => sendStatementEmail(statementId),
+    onSuccess: (updatedStatement) => {
+      queryClient.setQueryData<Statement>(queryKeys.adminStatement(updatedStatement.id), updatedStatement);
+      queryClient.setQueryData<Statement[]>(queryKeys.adminStatements, (current = []) =>
+        current.map((statementItem) => statementItem.id === updatedStatement.id ? updatedStatement : statementItem)
+      );
+      toast.success('Statement sent to customer');
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to send statement'),
+  });
 
   const handleSendStatement = async () => {
     if (!statement) {
@@ -42,11 +37,9 @@ export default function StatementDetail() {
     }
 
     try {
-      const updated = await sendStatementEmail(statement.id);
-      setStatement(updated);
-      toast.success('Statement sent to customer');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to send statement');
+      await sendStatementMutation.mutateAsync(statement.id);
+    } catch {
+      return;
     }
   };
 
@@ -74,7 +67,7 @@ export default function StatementDetail() {
   if (error || !statement) {
     return (
       <Box>
-        <Alert severity="error" sx={{ mb: 3 }}>{error || 'Statement not found'}</Alert>
+        <Alert severity="error" sx={{ mb: 3 }}>{error instanceof Error ? error.message : error || 'Statement not found'}</Alert>
         <Button onClick={() => navigate('/admin/statements')}>Back to Statements</Button>
       </Box>
     );
@@ -126,7 +119,7 @@ export default function StatementDetail() {
               variant="contained"
               startIcon={<Send />}
               onClick={handleSendStatement}
-              disabled={statement.emailStatus === 'Sent'}
+              disabled={statement.emailStatus === 'Sent' || sendStatementMutation.isPending}
             >
               Send Email
             </Button>

@@ -2,39 +2,47 @@ import { useEffect, useState } from 'react';
 import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, TextField, Select, MenuItem, FormControl, InputLabel, IconButton, Chip, Dialog, DialogTitle, DialogContent, DialogActions, Grid, Alert, CircularProgress } from '@mui/material';
 import { Add, Delete, Edit, Save } from '@mui/icons-material';
 import { toast } from 'sonner';
-import { CustomerProduct, OrderFrequency, StandingOrder } from '@/entities/types';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { OrderFrequency, StandingOrder } from '@/entities/types';
 import { getCustomerProducts } from '@/entities/product/api/productApi';
 import { getCustomerStandingOrder } from '@/entities/standingOrder/api/standingOrderApi';
 import { updateCustomerStandingOrder } from '@/features/standingOrderEditor/api/standingOrderEditorApi';
+import { queryKeys } from '@/shared/api/queryKeys';
 
 export default function StandingOrderPage() {
+  const queryClient = useQueryClient();
+  const standingOrderQuery = useQuery({
+    queryKey: queryKeys.customerStandingOrder,
+    queryFn: getCustomerStandingOrder,
+  });
+  const productsQuery = useQuery({
+    queryKey: queryKeys.customerProducts,
+    queryFn: getCustomerProducts,
+  });
   const [standingOrder, setStandingOrder] = useState<StandingOrder | null>(null);
-  const [products, setProducts] = useState<CustomerProduct[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [openAddDialog, setOpenAddDialog] = useState(false);
   const [newItem, setNewItem] = useState({ productId: '', quantity: 1 });
+  const products = productsQuery.data ?? [];
+  const isLoading = standingOrderQuery.isLoading || productsQuery.isLoading;
+  const error = standingOrderQuery.error ?? productsQuery.error;
 
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        setError('');
-        const [loadedStandingOrder, loadedProducts] = await Promise.all([
-          getCustomerStandingOrder(),
-          getCustomerProducts(),
-        ]);
-        setStandingOrder(loadedStandingOrder);
-        setProducts(loadedProducts);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unable to load standing order');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+    if (standingOrderQuery.data) {
+      setStandingOrder(standingOrderQuery.data);
+    }
+  }, [standingOrderQuery.data]);
 
-    void loadData();
-  }, []);
+  const saveStandingOrderMutation = useMutation({
+    mutationFn: (standingOrder: StandingOrder) => updateCustomerStandingOrder(standingOrder),
+    onSuccess: (updated) => {
+      queryClient.setQueryData<StandingOrder>(queryKeys.customerStandingOrder, updated);
+      setStandingOrder(updated);
+      setIsEditing(false);
+      toast.success('Standing order updated successfully');
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to save standing order'),
+  });
 
   const handleSave = async () => {
     if (!standingOrder) {
@@ -42,12 +50,9 @@ export default function StandingOrderPage() {
     }
 
     try {
-      const updated = await updateCustomerStandingOrder(standingOrder);
-      setStandingOrder(updated);
-      setIsEditing(false);
-      toast.success('Standing order updated successfully');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to save standing order');
+      await saveStandingOrderMutation.mutateAsync(standingOrder);
+    } catch {
+      return;
     }
   };
 
@@ -110,7 +115,7 @@ export default function StandingOrderPage() {
   }
 
   if (error || !standingOrder) {
-    return <Alert severity="error">{error || 'Standing order not found'}</Alert>;
+    return <Alert severity="error">{error instanceof Error ? error.message : error || 'Standing order not found'}</Alert>;
   }
 
   const estimatedTotal = standingOrder.items.reduce(
@@ -124,7 +129,7 @@ export default function StandingOrderPage() {
         <Typography variant="h4">Standing Order</Typography>
         <Box>
           {isEditing ? (
-            <Button variant="contained" startIcon={<Save />} onClick={handleSave}>
+            <Button variant="contained" startIcon={<Save />} onClick={handleSave} disabled={saveStandingOrderMutation.isPending}>
               Save Changes
             </Button>
           ) : (

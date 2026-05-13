@@ -1,19 +1,30 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, MenuItem, Stack, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow, Tabs, TextField, Typography } from '@mui/material';
 import { Download } from '@mui/icons-material';
 import { toast } from 'sonner';
+import { useQuery } from '@tanstack/react-query';
 import { AuditLog, EmailLog, EmailStatus } from '@/entities/types';
 import { exportAuditLogs, getAuditLogs, type LogQueryParams } from '@/entities/auditLog/api/auditLogApi';
 import { exportEmailLogs, getEmailLogs } from '@/entities/emailLog/api/emailLogApi';
+import { queryKeys } from '@/shared/api/queryKeys';
 
 const emailStatuses: EmailStatus[] = ['Pending', 'Sent', 'Failed', 'Bounced'];
+type LogFilters = Pick<LogQueryParams, 'search' | 'entityType' | 'action' | 'status'> & {
+  from: string;
+  to: string;
+};
+
+const emptyFilters: LogFilters = {
+  search: '',
+  entityType: '',
+  action: '',
+  status: '',
+  from: '',
+  to: '',
+};
 
 export default function Logs() {
   const [tab, setTab] = useState<'audit' | 'email'>('audit');
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
-  const [emailLogs, setEmailLogs] = useState<EmailLog[]>([]);
-  const [auditTotal, setAuditTotal] = useState(0);
-  const [emailTotal, setEmailTotal] = useState(0);
   const [auditPage, setAuditPage] = useState(0);
   const [emailPage, setEmailPage] = useState(0);
   const [auditRowsPerPage, setAuditRowsPerPage] = useState(25);
@@ -24,55 +35,52 @@ export default function Logs() {
   const [status, setStatus] = useState<EmailStatus | ''>('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [refreshKey, setRefreshKey] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [appliedFilters, setAppliedFilters] = useState<LogFilters>(emptyFilters);
 
   const commonParams = useMemo<LogQueryParams>(() => ({
-    search,
-    entityType,
-    from: from ? `${from}T00:00:00.000Z` : undefined,
-    to: to ? `${to}T23:59:59.999Z` : undefined,
-  }), [entityType, from, search, to]);
+    search: appliedFilters.search,
+    entityType: appliedFilters.entityType,
+    from: appliedFilters.from ? `${appliedFilters.from}T00:00:00.000Z` : undefined,
+    to: appliedFilters.to ? `${appliedFilters.to}T23:59:59.999Z` : undefined,
+  }), [appliedFilters]);
 
-  useEffect(() => {
-    const loadLogs = async () => {
-      try {
-        setIsLoading(true);
-        setError('');
-        if (tab === 'audit') {
-          const result = await getAuditLogs({
-            ...commonParams,
-            action,
-            page: auditPage + 1,
-            pageSize: auditRowsPerPage,
-          });
-          setAuditLogs(result.items);
-          setAuditTotal(result.totalCount);
-        } else {
-          const result = await getEmailLogs({
-            ...commonParams,
-            status,
-            page: emailPage + 1,
-            pageSize: emailRowsPerPage,
-          });
-          setEmailLogs(result.items);
-          setEmailTotal(result.totalCount);
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unable to load logs');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  const auditParams = useMemo<LogQueryParams>(() => ({
+    ...commonParams,
+    action: appliedFilters.action,
+    page: auditPage + 1,
+    pageSize: auditRowsPerPage,
+  }), [appliedFilters.action, auditPage, auditRowsPerPage, commonParams]);
 
-    void loadLogs();
-  }, [action, auditPage, auditRowsPerPage, commonParams, emailPage, emailRowsPerPage, refreshKey, status, tab]);
+  const emailParams = useMemo<LogQueryParams>(() => ({
+    ...commonParams,
+    status: appliedFilters.status,
+    page: emailPage + 1,
+    pageSize: emailRowsPerPage,
+  }), [appliedFilters.status, commonParams, emailPage, emailRowsPerPage]);
+
+  const auditQuery = useQuery({
+    queryKey: queryKeys.auditLogsList(auditParams),
+    queryFn: () => getAuditLogs(auditParams),
+    enabled: tab === 'audit',
+  });
+
+  const emailQuery = useQuery({
+    queryKey: queryKeys.emailLogsList(emailParams),
+    queryFn: () => getEmailLogs(emailParams),
+    enabled: tab === 'email',
+  });
+
+  const auditLogs = auditQuery.data?.items ?? [];
+  const emailLogs = emailQuery.data?.items ?? [];
+  const auditTotal = auditQuery.data?.totalCount ?? 0;
+  const emailTotal = emailQuery.data?.totalCount ?? 0;
+  const isLoading = tab === 'audit' ? auditQuery.isLoading : emailQuery.isLoading;
+  const error = tab === 'audit' ? auditQuery.error : emailQuery.error;
 
   const applyFilters = () => {
     setAuditPage(0);
     setEmailPage(0);
-    setRefreshKey((current) => current + 1);
+    setAppliedFilters({ search, entityType, action, status, from, to });
   };
 
   const clearFilters = () => {
@@ -84,15 +92,15 @@ export default function Logs() {
     setTo('');
     setAuditPage(0);
     setEmailPage(0);
-    setRefreshKey((current) => current + 1);
+    setAppliedFilters(emptyFilters);
   };
 
   const handleExport = async () => {
     try {
       if (tab === 'audit') {
-        await exportAuditLogs({ ...commonParams, action });
+        await exportAuditLogs({ ...commonParams, action: appliedFilters.action });
       } else {
-        await exportEmailLogs({ ...commonParams, status });
+        await exportEmailLogs({ ...commonParams, status: appliedFilters.status });
       }
       toast.success('Export started');
     } catch (err) {
@@ -109,7 +117,7 @@ export default function Logs() {
         Review audit trail and email delivery events
       </Typography>
 
-      {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
+      {error && <Alert severity="error" sx={{ mb: 3 }}>{error instanceof Error ? error.message : 'Unable to load logs'}</Alert>}
 
       <Card>
         <CardContent>

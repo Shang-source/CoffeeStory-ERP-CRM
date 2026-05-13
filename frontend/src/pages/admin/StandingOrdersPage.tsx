@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   Alert,
   Box,
@@ -25,12 +25,14 @@ import {
 } from '@mui/material';
 import { Add, Cancel as CancelIcon, Delete, Edit, Pause, PlayArrow, RestartAlt } from '@mui/icons-material';
 import { toast } from 'sonner';
-import { Customer, OrderFrequency, Product, StandingOrder, StandingOrderStatus } from '@/entities/types';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { OrderFrequency, StandingOrder, StandingOrderStatus } from '@/entities/types';
 import { getAdminCustomers } from '@/entities/customer/api/customerApi';
 import { getProducts } from '@/entities/product/api/productApi';
 import { getAdminStandingOrders } from '@/entities/standingOrder/api/standingOrderApi';
 import { createAdminStandingOrder, type StandingOrderPayload, updateAdminStandingOrder } from '@/features/standingOrderEditor/api/standingOrderEditorApi';
 import { cancelStandingOrder, generateStandingOrderNow, pauseStandingOrder, resumeStandingOrder } from '@/features/standingOrderLifecycle/api/standingOrderLifecycleApi';
+import { queryKeys } from '@/shared/api/queryKeys';
 
 const frequencies: OrderFrequency[] = ['Weekly', 'Fortnightly', 'Monthly', 'ManualOnly'];
 const statuses: StandingOrderStatus[] = ['Active', 'Paused', 'Cancelled'];
@@ -62,60 +64,82 @@ const emptyForm: StandingOrderFormState = {
 };
 
 export default function StandingOrders() {
-  const [standingOrders, setStandingOrders] = useState<StandingOrder[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
+  const queryClient = useQueryClient();
+  const standingOrdersQuery = useQuery({
+    queryKey: queryKeys.adminStandingOrders,
+    queryFn: getAdminStandingOrders,
+  });
+  const customersQuery = useQuery({
+    queryKey: queryKeys.adminCustomers,
+    queryFn: getAdminCustomers,
+  });
+  const productsQuery = useQuery({
+    queryKey: queryKeys.adminProducts,
+    queryFn: getProducts,
+  });
   const [editingOrder, setEditingOrder] = useState<StandingOrder | null>(null);
   const [formData, setFormData] = useState<StandingOrderFormState>(emptyForm);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
+  const standingOrders = standingOrdersQuery.data ?? [];
+  const customers = customersQuery.data ?? [];
+  const products = (productsQuery.data ?? []).filter((product) => product.isActive);
+  const isLoading = standingOrdersQuery.isLoading || customersQuery.isLoading || productsQuery.isLoading;
+  const error = standingOrdersQuery.error ?? customersQuery.error ?? productsQuery.error;
 
-  useEffect(() => {
-    const loadData = async () => {
-      try {
-        setError('');
-        const [loadedStandingOrders, loadedCustomers, loadedProducts] = await Promise.all([
-          getAdminStandingOrders(),
-          getAdminCustomers(),
-          getProducts(),
-        ]);
-        setStandingOrders(loadedStandingOrders);
-        setCustomers(loadedCustomers);
-        setProducts(loadedProducts.filter((product) => product.isActive));
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unable to load standing orders');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    void loadData();
-  }, []);
-
-  const handleManualGenerate = async (orderId: string) => {
-    try {
-      const order = await generateStandingOrderNow(orderId);
-      toast.success(`Order ${order.orderNumber} generated manually`);
-      setStandingOrders(await getAdminStandingOrders());
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to generate order');
-    }
-  };
-
-  const updateStandingOrder = (updatedOrder: StandingOrder) => {
-    setStandingOrders((currentOrders) =>
+  const updateStandingOrderCache = (updatedOrder: StandingOrder) => {
+    queryClient.setQueryData<StandingOrder[]>(queryKeys.adminStandingOrders, (currentOrders = []) =>
       currentOrders.map((order) => order.id === updatedOrder.id ? updatedOrder : order)
     );
   };
 
+  const manualGenerateMutation = useMutation({
+    mutationFn: (standingOrderId: string) => generateStandingOrderNow(standingOrderId),
+    onSuccess: async (order) => {
+      toast.success(`Order ${order.orderNumber} generated manually`);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.adminStandingOrders });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.adminOrders });
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to generate order'),
+  });
+
+  const statusActionMutation = useMutation({
+    mutationFn: ({ action }: { action: () => Promise<StandingOrder>; successMessage: string }) => action(),
+    onSuccess: (updatedOrder, variables) => {
+      updateStandingOrderCache(updatedOrder);
+      toast.success(variables.successMessage);
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to update standing order'),
+  });
+
+  const saveStandingOrderMutation = useMutation({
+    mutationFn: ({ standingOrderId, payload }: { standingOrderId?: string; payload: StandingOrderPayload; isEditing: boolean }) =>
+      standingOrderId ? updateAdminStandingOrder(standingOrderId, payload) : createAdminStandingOrder(payload),
+    onSuccess: (saved, variables) => {
+      queryClient.setQueryData<StandingOrder[]>(queryKeys.adminStandingOrders, (currentOrders = []) => {
+        const exists = currentOrders.some((order) => order.id === saved.id);
+        return exists
+          ? currentOrders.map((order) => order.id === saved.id ? saved : order)
+          : [...currentOrders, saved].sort((left, right) => (left.customer?.businessName ?? '').localeCompare(right.customer?.businessName ?? ''));
+      });
+      toast.success(variables.isEditing ? 'Standing order updated' : 'Standing order created');
+      setIsDialogOpen(false);
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to save standing order'),
+  });
+
+  const handleManualGenerate = async (orderId: string) => {
+    try {
+      await manualGenerateMutation.mutateAsync(orderId);
+    } catch {
+      return;
+    }
+  };
+
   const runStatusAction = async (action: () => Promise<StandingOrder>, successMessage: string) => {
     try {
-      updateStandingOrder(await action());
-      toast.success(successMessage);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to update standing order');
+      await statusActionMutation.mutateAsync({ action, successMessage });
+    } catch {
+      return;
     }
   };
 
@@ -168,22 +192,13 @@ export default function StandingOrders() {
     };
 
     try {
-      setIsSaving(true);
-      const saved = editingOrder
-        ? await updateAdminStandingOrder(editingOrder.id, payload)
-        : await createAdminStandingOrder(payload);
-      setStandingOrders((currentOrders) => {
-        const exists = currentOrders.some((order) => order.id === saved.id);
-        return exists
-          ? currentOrders.map((order) => order.id === saved.id ? saved : order)
-          : [...currentOrders, saved].sort((left, right) => (left.customer?.businessName ?? '').localeCompare(right.customer?.businessName ?? ''));
+      await saveStandingOrderMutation.mutateAsync({
+        standingOrderId: editingOrder?.id,
+        payload,
+        isEditing: Boolean(editingOrder),
       });
-      toast.success(editingOrder ? 'Standing order updated' : 'Standing order created');
-      setIsDialogOpen(false);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to save standing order');
-    } finally {
-      setIsSaving(false);
+    } catch {
+      return;
     }
   };
 
@@ -232,7 +247,7 @@ export default function StandingOrders() {
         </Button>
       </Box>
 
-      {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
+      {error && <Alert severity="error" sx={{ mb: 3 }}>{error instanceof Error ? error.message : 'Unable to load standing orders'}</Alert>}
 
       <Card>
         <CardContent>
@@ -445,7 +460,7 @@ export default function StandingOrders() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleSave} variant="contained" disabled={isSaving}>
+          <Button onClick={handleSave} variant="contained" disabled={saveStandingOrderMutation.isPending}>
             Save Standing Order
           </Button>
         </DialogActions>

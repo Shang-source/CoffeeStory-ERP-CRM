@@ -1,37 +1,51 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Chip, IconButton, Alert, CircularProgress } from '@mui/material';
 import { Add, Archive, Edit } from '@mui/icons-material';
 import { toast } from 'sonner';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Product } from '@/entities/types';
 import ProductDialog from '@/features/productCreateEdit/ui/ProductDialog';
 import ConfirmDialog from '@/shared/ui/ConfirmDialog/ConfirmDialog';
 import { getAdminProducts } from '@/entities/product/api/productApi';
 import { archiveAdminProduct } from '@/features/productArchive/api/productArchiveApi';
 import { createAdminProduct, type ProductPayload, updateAdminProduct } from '@/features/productCreateEdit/api/productCreateEditApi';
+import { queryKeys } from '@/shared/api/queryKeys';
 
 export default function Products() {
-  const [products, setProducts] = useState<Product[]>([]);
+  const queryClient = useQueryClient();
+  const { data: products = [], isLoading, error } = useQuery({
+    queryKey: queryKeys.adminProducts,
+    queryFn: getAdminProducts,
+  });
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [productToArchive, setProductToArchive] = useState<Product | null>(null);
-  const [isArchiving, setIsArchiving] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
 
-  useEffect(() => {
-    const loadProducts = async () => {
-      try {
-        setError('');
-        setProducts(await getAdminProducts());
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unable to load products');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  const saveProductMutation = useMutation({
+    mutationFn: ({ productId, product }: { productId?: string; product: ProductPayload }) =>
+      productId ? updateAdminProduct(productId, product) : createAdminProduct(product),
+    onSuccess: (savedProduct) => {
+      queryClient.setQueryData<Product[]>(queryKeys.adminProducts, (currentProducts = []) => {
+        const exists = currentProducts.some((product) => product.id === savedProduct.id);
+        const nextProducts = exists
+          ? currentProducts.map(product => product.id === savedProduct.id ? savedProduct : product)
+          : [...currentProducts, savedProduct];
+        return nextProducts.sort((a, b) => a.name.localeCompare(b.name));
+      });
+    },
+  });
 
-    void loadProducts();
-  }, []);
+  const archiveProductMutation = useMutation({
+    mutationFn: (productId: string) => archiveAdminProduct(productId),
+    onSuccess: (archivedProduct) => {
+      queryClient.setQueryData<Product[]>(queryKeys.adminProducts, (currentProducts = []) =>
+        currentProducts.map((item) => item.id === archivedProduct.id ? archivedProduct : item)
+      );
+      toast.success(`${archivedProduct.name} archived`);
+      setProductToArchive(null);
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to archive product'),
+  });
 
   const handleAdd = () => {
     setSelectedProduct(null);
@@ -44,16 +58,7 @@ export default function Products() {
   };
 
   const handleSave = async (productPayload: ProductPayload) => {
-    const savedProduct = selectedProduct
-      ? await updateAdminProduct(selectedProduct.id, productPayload)
-      : await createAdminProduct(productPayload);
-
-    setProducts((currentProducts) => {
-      const nextProducts = selectedProduct
-        ? currentProducts.map(product => product.id === savedProduct.id ? savedProduct : product)
-        : [...currentProducts, savedProduct];
-      return nextProducts.sort((a, b) => a.name.localeCompare(b.name));
-    });
+    await saveProductMutation.mutateAsync({ productId: selectedProduct?.id, product: productPayload });
   };
 
   const handleArchive = async () => {
@@ -61,19 +66,7 @@ export default function Products() {
       return;
     }
 
-    try {
-      setIsArchiving(true);
-      const archivedProduct = await archiveAdminProduct(productToArchive.id);
-      setProducts((currentProducts) =>
-        currentProducts.map((item) => item.id === archivedProduct.id ? archivedProduct : item)
-      );
-      toast.success(`${archivedProduct.name} archived`);
-      setProductToArchive(null);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to archive product');
-    } finally {
-      setIsArchiving(false);
-    }
+    archiveProductMutation.mutate(productToArchive.id);
   };
 
   if (isLoading) {
@@ -100,7 +93,7 @@ export default function Products() {
         </Button>
       </Box>
 
-      {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
+      {error && <Alert severity="error" sx={{ mb: 3 }}>{error instanceof Error ? error.message : 'Unable to load products'}</Alert>}
 
       <Card>
         <CardContent>
@@ -157,7 +150,7 @@ export default function Products() {
         message={productToArchive ? `Archive ${productToArchive.name}? It will be hidden from new standing-order item selection.` : ''}
         confirmLabel="Archive"
         confirmColor="warning"
-        isConfirming={isArchiving}
+        isConfirming={archiveProductMutation.isPending}
         onCancel={() => setProductToArchive(null)}
         onConfirm={handleArchive}
       />

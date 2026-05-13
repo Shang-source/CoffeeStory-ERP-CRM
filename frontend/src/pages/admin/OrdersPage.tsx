@@ -1,14 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, Button, IconButton, Collapse, Menu, MenuItem, Alert, CircularProgress } from '@mui/material';
 import { KeyboardArrowDown, KeyboardArrowUp, MoreVert, PlayArrow } from '@mui/icons-material';
 import { formatOrderStatus, formatInvoiceStatus, formatShipmentStatus, getOrderStatusColor, getInvoiceStatusColor, getShipmentStatusColor } from '@/shared/status/statusFormat';
 import { toast } from 'sonner';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Order } from '@/entities/types';
 import { useNavigate } from 'react-router';
 import ConfirmDialog from '@/shared/ui/ConfirmDialog/ConfirmDialog';
 import { getAdminOrders } from '@/entities/order/api/orderApi';
 import { batchSendOrdersToProduction } from '@/features/batchToProduction/api/batchToProductionApi';
 import { cancelOrder, generateInvoice, markOrderReadyToShip, markOrderShipped, sendInvoice, sendOrderToProduction } from '@/features/orderWorkflow/api/orderWorkflowApi';
+import { queryKeys } from '@/shared/api/queryKeys';
 
 interface OrderRowProps {
   order: Order;
@@ -236,35 +238,53 @@ function OrderRow({ order, onOrderAction }: OrderRowProps) {
 }
 
 export default function Orders() {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
+  const queryClient = useQueryClient();
+  const { data: orders = [], isLoading, error } = useQuery({
+    queryKey: queryKeys.adminOrders,
+    queryFn: getAdminOrders,
+  });
   const navigate = useNavigate();
 
-  useEffect(() => {
-    void loadOrders();
-  }, []);
+  const orderActionMutation = useMutation({
+    mutationFn: ({ action }: { action: () => Promise<Order>; successMessage: string }) => action(),
+    onSuccess: (updatedOrder, variables) => {
+      queryClient.setQueryData<Order[]>(queryKeys.adminOrders, (currentOrders = []) =>
+        currentOrders.map((order) => order.id === updatedOrder.id ? updatedOrder : order)
+      );
+      void queryClient.invalidateQueries({ queryKey: queryKeys.adminInvoices });
+      toast.success(variables.successMessage);
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Order action failed'),
+  });
 
-  const loadOrders = async () => {
-    try {
-      setError('');
-      setOrders(await getAdminOrders());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to load orders');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const batchToProductionMutation = useMutation({
+    mutationFn: (orderIds: string[]) => batchSendOrdersToProduction(orderIds),
+    onSuccess: (result, orderIds) => {
+      const updatedOrders = result.orders;
+      queryClient.setQueryData<Order[]>(queryKeys.adminOrders, (currentOrders = []) =>
+        currentOrders.map((order) => updatedOrders.find((updated) => updated.id === order.id) ?? order)
+      );
+      void queryClient.invalidateQueries({ queryKey: queryKeys.production });
+      toast.success(`${orderIds.length} order${orderIds.length > 1 ? 's' : ''} sent to production successfully`, {
+        description: 'These orders have been added to the Production List and are now in production.',
+      });
+      setTimeout(() => {
+        toast.info('View Production List to track progress', {
+          action: {
+            label: 'Go to Production',
+            onClick: () => navigate('/admin/production'),
+          },
+        });
+      }, 1500);
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Batch action failed'),
+  });
 
   const handleOrderAction = async (action: () => Promise<Order>, successMessage: string) => {
     try {
-      const updatedOrder = await action();
-      setOrders((currentOrders) =>
-        currentOrders.map((order) => order.id === updatedOrder.id ? updatedOrder : order)
-      );
-      toast.success(successMessage);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Order action failed');
+      await orderActionMutation.mutateAsync({ action, successMessage });
+    } catch {
+      return;
     }
   };
 
@@ -277,24 +297,9 @@ export default function Orders() {
     }
 
     try {
-      const result = await batchSendOrdersToProduction(generatedOrders.map(order => order.id));
-      const updatedOrders = result.orders;
-      setOrders((currentOrders) =>
-        currentOrders.map((order) => updatedOrders.find((updated) => updated.id === order.id) ?? order)
-      );
-      toast.success(`${generatedOrders.length} order${generatedOrders.length > 1 ? 's' : ''} sent to production successfully`, {
-        description: 'These orders have been added to the Production List and are now in production.',
-      });
-      setTimeout(() => {
-        toast.info('View Production List to track progress', {
-          action: {
-            label: 'Go to Production',
-            onClick: () => navigate('/admin/production'),
-          },
-        });
-      }, 1500);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Batch action failed');
+      await batchToProductionMutation.mutateAsync(generatedOrders.map(order => order.id));
+    } catch {
+      return;
     }
   };
 
@@ -327,13 +332,13 @@ export default function Orders() {
           size="large"
           startIcon={<PlayArrow />}
           onClick={handleBatchSendToProduction}
-          disabled={generatedOrdersCount === 0}
+          disabled={generatedOrdersCount === 0 || batchToProductionMutation.isPending}
         >
           Send All to Production ({generatedOrdersCount})
         </Button>
       </Box>
 
-      {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
+      {error && <Alert severity="error" sx={{ mb: 3 }}>{error instanceof Error ? error.message : 'Unable to load orders'}</Alert>}
 
       {generatedOrdersCount > 0 && (
         <Alert severity="info" sx={{ mb: 3 }}>

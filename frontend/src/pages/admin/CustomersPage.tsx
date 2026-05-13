@@ -1,50 +1,51 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Chip, IconButton, Alert, CircularProgress } from '@mui/material';
 import { Add, Send, Visibility } from '@mui/icons-material';
 import { Link } from 'react-router';
 import { toast } from 'sonner';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import CreateCustomerDialog from '@/features/customerCreate/ui/CreateCustomerDialog';
 import { Customer } from '@/entities/types';
 import { getAdminCustomers, type CustomerPayload } from '@/entities/customer/api/customerApi';
 import { createAdminCustomer } from '@/features/customerCreate/api/customerCreateApi';
 import { sendAdminCustomerInvite } from '@/features/customerInvite/api/customerInviteApi';
+import { queryKeys } from '@/shared/api/queryKeys';
 
 export default function Customers() {
+  const queryClient = useQueryClient();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
+  const { data: customers = [], isLoading, error } = useQuery({
+    queryKey: queryKeys.adminCustomers,
+    queryFn: getAdminCustomers,
+  });
 
-  useEffect(() => {
-    const loadCustomers = async () => {
-      try {
-        setError('');
-        setCustomers(await getAdminCustomers());
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unable to load customers');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  const createCustomerMutation = useMutation({
+    mutationFn: (customer: CustomerPayload) => createAdminCustomer(customer),
+    onSuccess: (customer) => {
+      queryClient.setQueryData<Customer[]>(queryKeys.adminCustomers, (currentCustomers = []) =>
+        [...currentCustomers, customer].sort((a, b) => a.businessName.localeCompare(b.businessName))
+      );
+    },
+  });
 
-    void loadCustomers();
-  }, []);
-
-  const handleCreateCustomer = async (customerData: CustomerPayload) => {
-    const customer = await createAdminCustomer(customerData);
-    setCustomers((currentCustomers) => [...currentCustomers, customer].sort((a, b) => a.businessName.localeCompare(b.businessName)));
-  };
-
-  const handleSendInvite = async (customer: Customer) => {
-    try {
-      const updatedCustomer = await sendAdminCustomerInvite(customer.id);
-      setCustomers((currentCustomers) =>
+  const sendInviteMutation = useMutation({
+    mutationFn: (customerId: string) => sendAdminCustomerInvite(customerId),
+    onSuccess: (updatedCustomer) => {
+      queryClient.setQueryData<Customer[]>(queryKeys.adminCustomers, (currentCustomers = []) =>
         currentCustomers.map((item) => item.id === updatedCustomer.id ? updatedCustomer : item)
       );
+      queryClient.setQueryData<Customer>(queryKeys.adminCustomer(updatedCustomer.id), updatedCustomer);
       toast.success(`Invite sent to ${updatedCustomer.email}`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to send invite');
-    }
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to send invite'),
+  });
+
+  const handleCreateCustomer = async (customerData: CustomerPayload) => {
+    await createCustomerMutation.mutateAsync(customerData);
+  };
+
+  const handleSendInvite = (customer: Customer) => {
+    sendInviteMutation.mutate(customer.id);
   };
 
   if (isLoading) {
@@ -71,7 +72,7 @@ export default function Customers() {
         </Button>
       </Box>
 
-      {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
+      {error && <Alert severity="error" sx={{ mb: 3 }}>{error instanceof Error ? error.message : 'Unable to load customers'}</Alert>}
 
       <Card>
         <CardContent>
@@ -103,7 +104,11 @@ export default function Customers() {
                       <IconButton
                         size="small"
                         onClick={() => handleSendInvite(customer)}
-                        disabled={customer.accountStatus === 'Suspended' || customer.accountStatus === 'Archived'}
+                        disabled={
+                          customer.accountStatus === 'Suspended' ||
+                          customer.accountStatus === 'Archived' ||
+                          sendInviteMutation.isPending
+                        }
                         title="Send invite email"
                       >
                         <Send />

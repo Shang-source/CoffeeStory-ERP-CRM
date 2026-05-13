@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeCustomerProduct, makeStandingOrder } from '@/entities/testing/fixtures';
 import StandingOrderPage from './StandingOrderPage';
@@ -39,7 +40,7 @@ describe('Customer StandingOrderPage', () => {
     getCustomerStandingOrderMock.mockResolvedValue(makeStandingOrder({ items: [] }));
     getCustomerProductsMock.mockResolvedValue([makeCustomerProduct()]);
 
-    render(<StandingOrderPage />);
+    renderWithQuery();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Edit Order' }));
     fireEvent.click(screen.getByRole('button', { name: 'Add Item' }));
@@ -55,3 +56,18 @@ describe('Customer StandingOrderPage', () => {
     expect(screen.getByText('Estimated Total: $35.00')).toBeInTheDocument();
   }, 10_000);
 });
+
+function renderWithQuery() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <StandingOrderPage />
+    </QueryClientProvider>
+  );
+}

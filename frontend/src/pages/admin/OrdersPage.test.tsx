@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeOrder, makeProductionBatch } from '@/entities/testing/fixtures';
@@ -54,11 +55,7 @@ describe('OrdersPage', () => {
       productionBatch: makeProductionBatch(),
     });
 
-    render(
-      <MemoryRouter>
-        <OrdersPage />
-      </MemoryRouter>
-    );
+    renderWithQuery();
 
     const batchButton = await screen.findByRole('button', { name: 'Send All to Production (2)' });
     fireEvent.click(batchButton);
@@ -69,3 +66,20 @@ describe('OrdersPage', () => {
     expect(await screen.findByRole('button', { name: 'Send All to Production (0)' })).toBeDisabled();
   });
 });
+
+function renderWithQuery() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter>
+        <OrdersPage />
+      </MemoryRouter>
+    </QueryClientProvider>
+  );
+}

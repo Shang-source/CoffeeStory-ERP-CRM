@@ -3,43 +3,53 @@ import { toast } from 'sonner';
 import { useAuth } from '@/app/providers/AuthProvider';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Customer } from '@/entities/types';
 import { getCustomerProfile, updateCustomerProfile } from '@/entities/customer/api/customerApi';
 import { changeCustomerPassword } from '@/features/passwordChange/api/passwordChangeApi';
+import { queryKeys } from '@/shared/api/queryKeys';
 
 export default function AccountSettings() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const queryClient = useQueryClient();
+  const profileQuery = useQuery({
+    queryKey: queryKeys.customerProfile,
+    queryFn: getCustomerProfile,
+    enabled: Boolean(user?.customerId),
+  });
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',
     newPassword: '',
     confirmNewPassword: '',
   });
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [isChangingPassword, setIsChangingPassword] = useState(false);
-  const [error, setError] = useState('');
 
   useEffect(() => {
-    const loadProfile = async () => {
-      if (!user?.customerId) {
-        setIsLoading(false);
-        return;
-      }
+    if (profileQuery.data) {
+      setCustomer(profileQuery.data);
+    }
+  }, [profileQuery.data]);
 
-      try {
-        setError('');
-        setCustomer(await getCustomerProfile());
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unable to load account settings');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  const updateProfileMutation = useMutation({
+    mutationFn: (customerProfile: Customer) => updateCustomerProfile(customerProfile),
+    onSuccess: (updatedCustomer) => {
+      queryClient.setQueryData<Customer>(queryKeys.customerProfile, updatedCustomer);
+      setCustomer(updatedCustomer);
+      toast.success('Account settings updated successfully');
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to update account settings'),
+  });
 
-    void loadProfile();
-  }, [user?.customerId]);
+  const changePasswordMutation = useMutation({
+    mutationFn: (passwordChange: typeof passwordForm) => changeCustomerPassword(passwordChange),
+    onSuccess: () => {
+      toast.success('Password changed. Please sign in again.');
+      logout();
+      navigate('/');
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to change password'),
+  });
 
   const handleSave = async () => {
     if (!customer) {
@@ -47,13 +57,9 @@ export default function AccountSettings() {
     }
 
     try {
-      setIsSaving(true);
-      setCustomer(await updateCustomerProfile(customer));
-      toast.success('Account settings updated successfully');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to update account settings');
-    } finally {
-      setIsSaving(false);
+      await updateProfileMutation.mutateAsync(customer);
+    } catch {
+      return;
     }
   };
 
@@ -77,15 +83,9 @@ export default function AccountSettings() {
     }
 
     try {
-      setIsChangingPassword(true);
-      await changeCustomerPassword(passwordForm);
-      toast.success('Password changed. Please sign in again.');
-      logout();
-      navigate('/');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to change password');
-    } finally {
-      setIsChangingPassword(false);
+      await changePasswordMutation.mutateAsync(passwordForm);
+    } catch {
+      return;
     }
   };
 
@@ -93,7 +93,7 @@ export default function AccountSettings() {
     return <Typography>Access denied</Typography>;
   }
 
-  if (isLoading) {
+  if (profileQuery.isLoading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
         <CircularProgress />
@@ -101,8 +101,8 @@ export default function AccountSettings() {
     );
   }
 
-  if (error || !customer) {
-    return <Alert severity="error">{error || 'Account settings not found'}</Alert>;
+  if (profileQuery.error || !customer) {
+    return <Alert severity="error">{profileQuery.error instanceof Error ? profileQuery.error.message : 'Account settings not found'}</Alert>;
   }
 
   return (
@@ -178,7 +178,7 @@ export default function AccountSettings() {
           </Grid>
 
           <Box sx={{ mt: 3 }}>
-            <Button variant="contained" onClick={handleSave} disabled={isSaving}>
+            <Button variant="contained" onClick={handleSave} disabled={updateProfileMutation.isPending}>
               Save Changes
             </Button>
           </Box>
@@ -248,7 +248,7 @@ export default function AccountSettings() {
             <Button
               variant="contained"
               onClick={handlePasswordChange}
-              disabled={isChangingPassword || !passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmNewPassword}
+              disabled={changePasswordMutation.isPending || !passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmNewPassword}
             >
               Update Password
             </Button>

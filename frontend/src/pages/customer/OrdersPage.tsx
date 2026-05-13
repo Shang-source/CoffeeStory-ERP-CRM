@@ -1,9 +1,11 @@
 import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, IconButton, Collapse, Alert, CircularProgress } from '@mui/material';
 import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { formatOrderStatus, getOrderStatusColor } from '@/shared/status/statusFormat';
 import { Order } from '@/entities/types';
 import { getCustomerOrders } from '@/entities/order/api/orderApi';
+import { queryKeys } from '@/shared/api/queryKeys';
 
 function OrderRow({ order }: { order: Order }) {
   const [open, setOpen] = useState(false);
@@ -82,24 +84,10 @@ function OrderRow({ order }: { order: Order }) {
 }
 
 export default function CustomerOrders() {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    const loadOrders = async () => {
-      try {
-        setError('');
-        setOrders(await getCustomerOrders());
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unable to load orders');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    void loadOrders();
-  }, []);
+  const { data: orders = [], isLoading, error } = useQuery({
+    queryKey: queryKeys.customerOrders,
+    queryFn: getCustomerOrders,
+  });
 
   if (isLoading) {
     return (
@@ -118,7 +106,7 @@ export default function CustomerOrders() {
         View your order history
       </Typography>
 
-      {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
+      {error && <Alert severity="error" sx={{ mb: 3 }}>{error instanceof Error ? error.message : 'Unable to load orders'}</Alert>}
 
       <Card>
         <CardContent>
