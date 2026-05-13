@@ -1,0 +1,34 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: storycoffee-config
+data:
+  ASPNETCORE_ENVIRONMENT: Development
+  ASPNETCORE_URLS: http://+:{{ .Values.api.port }}
+  Jwt__Issuer: StoryCoffee
+  Jwt__Audience: StoryCoffee.App
+  Jwt__ExpiryMinutes: "480"
+  Cors__AllowedOrigins__0: http://localhost:8080
+  Cors__AllowedOrigins__1: http://{{ .Values.ingress.host }}
+  Redis__Enabled: {{ .Values.redis.enabled | quote }}
+  Redis__ConnectionString: {{ .Values.api.redisConnectionString | quote }}
+  DocumentStorage__Provider: {{ .Values.api.documentStorageProvider | quote }}
+  DocumentStorage__LocalRoot: {{ .Values.api.documentStorageRoot | quote }}
+  DocumentStorage__BucketName: {{ .Values.api.documentStorageBucketName | quote }}
+  DocumentStorage__S3Region: {{ .Values.api.documentStorageS3Region | quote }}
+  DocumentStorage__ServiceUrl: {{ .Values.api.documentStorageServiceUrl | quote }}
+  DocumentStorage__ForcePathStyle: {{ .Values.api.documentStorageForcePathStyle | quote }}
+  Email__Provider: {{ .Values.api.emailProvider | quote }}
+  Email__FromName: StoryCoffee
+  Email__FromAddress: {{ .Values.api.emailFromAddress | quote }}
+  Email__SmtpHost: {{ .Values.api.emailSmtpHost | quote }}
+  Email__SmtpPort: {{ .Values.api.emailSmtpPort | quote }}
+  Email__UseStartTls: {{ .Values.api.emailUseStartTls | quote }}
+  Email__SesRegion: {{ .Values.api.emailSesRegion | quote }}
+  Email__SesEndpointUrl: {{ .Values.api.emailSesEndpointUrl | quote }}
+  Email__SesConfigurationSet: {{ .Values.api.emailSesConfigurationSet | quote }}
+  Email__VerifySnsSignature: {{ .Values.api.emailVerifySnsSignature | quote }}
+  Email__AutoConfirmSnsSubscriptions: {{ .Values.api.emailAutoConfirmSnsSubscriptions | quote }}
+  Email__SnsTopicArn: {{ .Values.api.emailSnsTopicArn | quote }}
+  Outbox__Enabled: {{ .Values.api.outboxEnabled | quote }}
+  Outbox__LockTimeoutSeconds: {{ .Values.api.outboxLockTimeoutSeconds | quote }}

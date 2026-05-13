@@ -1,0 +1,26 @@
+{
+  "name": "storycoffee",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.10.0",
+  "scripts": {
+    "dev:frontend": "pnpm --filter frontend dev",
+    "build:frontend": "pnpm --filter frontend build",
+    "dev:api": "dotnet run --project backend/src/StoryCoffee.Api",
+    "generate:api": "scripts/generate-openapi-client.sh",
+    "check:api": "scripts/check-openapi-client.sh",
+    "smoke:api": "node scripts/smoke-storycoffee.mjs",
+    "test:backend": "dotnet test backend/StoryCoffee.sln",
+    "test:e2e": "pnpm --filter frontend exec playwright test --config ../playwright.config.ts",
+    "test:perf": "k6 run k6/smoke.js"
+  },
+  "pnpm": {
+    "overrides": {
+      "vite": "6.3.5"
+    },
+    "onlyBuiltDependencies": [
+      "@tailwindcss/oxide",
+      "esbuild"
+    ]
+  }
+}

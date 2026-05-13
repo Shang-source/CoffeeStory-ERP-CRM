@@ -1,0 +1,16 @@
+global using StoryCoffee.Application.Exceptions;
+global using StoryCoffee.Application.Audit;
+global using StoryCoffee.Application.Auth;
+global using StoryCoffee.Application.Billing;
+global using StoryCoffee.Application.Catalog;
+global using StoryCoffee.Application.Customers;
+global using StoryCoffee.Application.Dashboard;
+global using StoryCoffee.Application.Documents;
+global using StoryCoffee.Application.Emails;
+global using StoryCoffee.Application.Health;
+global using StoryCoffee.Application.Orders;
+global using StoryCoffee.Application.Production;
+global using StoryCoffee.Application.StandingOrders;
+global using StoryCoffee.Application.Statements;
+global using StoryCoffee.Contracts;
+global using StoryCoffee.Domain;

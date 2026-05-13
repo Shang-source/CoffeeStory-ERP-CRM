@@ -1,0 +1,40 @@
+{{- if .Values.mailhog.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: storycoffee-mailhog
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: storycoffee-mailhog
+  template:
+    metadata:
+      labels:
+        app: storycoffee-mailhog
+    spec:
+      containers:
+        - name: mailhog
+          image: {{ .Values.mailhog.image }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          ports:
+            - name: smtp
+              containerPort: {{ .Values.mailhog.smtpPort }}
+            - name: web
+              containerPort: {{ .Values.mailhog.webPort }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: storycoffee-mailhog
+spec:
+  selector:
+    app: storycoffee-mailhog
+  ports:
+    - name: smtp
+      port: {{ .Values.mailhog.smtpPort }}
+      targetPort: {{ .Values.mailhog.smtpPort }}
+    - name: web
+      port: {{ .Values.mailhog.webPort }}
+      targetPort: {{ .Values.mailhog.webPort }}
+{{- end }}

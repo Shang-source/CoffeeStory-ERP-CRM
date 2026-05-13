@@ -1,0 +1,220 @@
+using StoryCoffee.Application.Common;
+using StoryCoffee.Contracts;
+using StoryCoffee.Domain;
+
+namespace StoryCoffee.Application.Billing;
+
+public sealed class BillingUseCase(
+    IBillingRepository billingRepository,
+    IEmailSender emailSender,
+    IOutboxPublisher outbox,
+    IClock clock) : IBillingService
+{
+    public async Task<IReadOnlyList<InvoiceDto>> GetAdminInvoices(CancellationToken cancellationToken)
+    {
+        var invoices = await billingRepository.GetAdminInvoices(cancellationToken);
+        return invoices.Select(invoice => invoice.ToDto()).ToList();
+    }
+
+    public async Task<IReadOnlyList<InvoiceDto>> GetCustomerInvoices(Guid customerId, CancellationToken cancellationToken)
+    {
+        var invoices = await billingRepository.GetCustomerInvoices(customerId, cancellationToken);
+        return invoices.Select(invoice => invoice.ToDto()).ToList();
+    }
+
+    public async Task<PdfDocumentResult> GenerateInvoicePdf(Guid invoiceId, Guid? customerId, CancellationToken cancellationToken)
+    {
+        var invoice = await billingRepository.GetInvoice(invoiceId, cancellationToken)
+            ?? throw new KeyNotFoundException("Invoice not found.");
+        if (customerId.HasValue && invoice.CustomerId != customerId.Value)
+        {
+            throw new KeyNotFoundException("Invoice not found.");
+        }
+
+        Require(invoice.Status != InvoiceStatus.Cancelled, "Cancelled invoices cannot generate PDFs.");
+        var now = clock.UtcNow;
+        invoice.PdfFileKey ??= $"invoices/{invoice.InvoiceNumber}.pdf";
+        invoice.PdfGeneratedAt = now;
+        if (invoice.Status == InvoiceStatus.Draft)
+        {
+            invoice.Status = InvoiceStatus.Issued;
+            invoice.Order.InvoiceStatus = InvoiceStatus.Issued;
+        }
+
+        invoice.UpdatedAt = now;
+        invoice.Order.UpdatedAt = now;
+        billingRepository.AddAudit("GeneratedInvoicePdf", "Invoice", invoice.Id, $"Generated PDF for invoice {invoice.InvoiceNumber}");
+        await billingRepository.SaveChanges(cancellationToken);
+
+        return new PdfDocumentResult(
+            $"StoryCoffee Invoice {invoice.InvoiceNumber}",
+            $"{invoice.InvoiceNumber}.pdf",
+            invoice.PdfFileKey,
+            invoice.PdfGeneratedAt.Value,
+            [
+                "StoryCoffee",
+                "Wholesale coffee supply | Auckland, New Zealand",
+                "",
+                $"Customer: {invoice.Customer.BusinessName}",
+                $"Billing address: {invoice.Customer.BillingAddress}",
+                $"Issue date: {invoice.IssueDate:yyyy-MM-dd}",
+                $"Due date: {invoice.DueDate:yyyy-MM-dd}",
+                "",
+                "Items:",
+                .. invoice.Items
+                    .OrderBy(item => item.Description)
+                    .Select(item => $"{item.Description} | Qty {item.Quantity} | Unit ${item.UnitPrice:F2} | Line ${item.LineTotal:F2}"),
+                "",
+                $"Subtotal: ${invoice.Subtotal:F2}",
+                $"GST: ${invoice.GstAmount:F2}",
+                $"Total: ${invoice.TotalAmount:F2}",
+                $"Outstanding: ${invoice.OutstandingAmount:F2}",
+                $"Status: {invoice.Status}",
+                "",
+                "Payment terms: Please pay by the due date using your invoice number as reference."
+            ]);
+    }
+
+    public async Task<InvoiceDto> SendInvoiceEmail(Guid invoiceId, CancellationToken cancellationToken)
+    {
+        var invoice = await billingRepository.GetInvoice(invoiceId, cancellationToken)
+            ?? throw new KeyNotFoundException("Invoice not found.");
+
+        Require(invoice.Status is InvoiceStatus.Draft or InvoiceStatus.Issued, "Only draft or issued invoices can be sent.");
+        Require(!string.IsNullOrWhiteSpace(invoice.Customer.Email), "Customer email is required.");
+        invoice.EmailStatus = EmailStatus.Pending;
+        invoice.UpdatedAt = clock.UtcNow;
+        invoice.Order.UpdatedAt = clock.UtcNow;
+        var subject = $"StoryCoffee invoice {invoice.InvoiceNumber}";
+        var emailLog = billingRepository.AddEmailLog("Invoice", invoice.Id, invoice.Customer.Email, subject, EmailStatus.Pending);
+        var message = new EmailMessage(invoice.Customer.Email, subject, $"Your StoryCoffee invoice {invoice.InvoiceNumber} is ready.");
+        var outboxMessage = outbox.EnqueueEmail(new OutboxEmailPayload("Invoice", invoice.Id, emailLog.Id, message.RecipientEmail, message.Subject, message.Body));
+        await billingRepository.SaveChanges(cancellationToken);
+
+        var sendResult = await emailSender.Send(message, cancellationToken);
+        emailLog.Provider = emailSender.ProviderName;
+        emailLog.ProviderMessageId = sendResult.ProviderMessageId;
+        if (sendResult.Succeeded)
+        {
+            invoice.Status = InvoiceStatus.Unpaid;
+            invoice.EmailStatus = EmailStatus.Sent;
+            invoice.Order.InvoiceStatus = InvoiceStatus.Unpaid;
+            emailLog.Status = EmailStatus.Sent;
+            emailLog.SentAt = clock.UtcNow;
+            outboxMessage.Status = OutboxStatus.Succeeded;
+            outboxMessage.ProcessedAt = clock.UtcNow;
+            outboxMessage.UpdatedAt = clock.UtcNow;
+            billingRepository.AddAudit("SentInvoiceEmail", "Invoice", invoice.Id, $"Sent invoice email for {invoice.InvoiceNumber}");
+        }
+        else
+        {
+            invoice.EmailStatus = EmailStatus.Failed;
+            emailLog.Status = EmailStatus.Failed;
+            emailLog.ErrorMessage = sendResult.ErrorMessage ?? "Email provider failed.";
+            outboxMessage.Attempts = 1;
+            outboxMessage.ErrorMessage = emailLog.ErrorMessage;
+            outboxMessage.UpdatedAt = clock.UtcNow;
+            billingRepository.AddAudit("FailedInvoiceEmail", "Invoice", invoice.Id, $"Failed to send invoice email for {invoice.InvoiceNumber}");
+        }
+
+        invoice.UpdatedAt = clock.UtcNow;
+        invoice.Order.UpdatedAt = clock.UtcNow;
+        await billingRepository.SaveChanges(cancellationToken);
+        return invoice.ToDto();
+    }
+
+    public async Task<(InvoiceDto Invoice, PaymentRecordDto Payment)> RecordPayment(Guid invoiceId, Guid markedByUserId, RecordPaymentRequest request, CancellationToken cancellationToken)
+    {
+        var invoice = await billingRepository.GetInvoice(invoiceId, cancellationToken)
+            ?? throw new KeyNotFoundException("Invoice not found.");
+
+        Require(invoice.Status is InvoiceStatus.Unpaid or InvoiceStatus.PartiallyPaid or InvoiceStatus.Overdue, "Only unpaid invoices can receive payments.");
+        Require(request.Amount > 0, "Payment amount must be greater than zero.");
+        Require(request.Amount <= invoice.OutstandingAmount, "Payment amount cannot exceed the outstanding amount.");
+        Require(!string.IsNullOrWhiteSpace(request.Reference), "Payment reference is required.");
+
+        var payment = new PaymentRecord
+        {
+            Id = Guid.NewGuid(),
+            InvoiceId = invoice.Id,
+            Amount = request.Amount,
+            PaymentDate = request.PaymentDate,
+            PaymentMethod = string.IsNullOrWhiteSpace(request.PaymentMethod) ? "BankTransfer" : request.PaymentMethod,
+            Reference = request.Reference.Trim(),
+            MarkedByUserId = markedByUserId,
+            Note = NormalizeOptional(request.Note),
+            CreatedAt = clock.UtcNow
+        };
+
+        billingRepository.AddPayment(payment);
+        ApplyPaymentTotals(invoice, invoice.Payments);
+        billingRepository.AddAudit("RecordedPayment", "Invoice", invoice.Id, $"Recorded payment {payment.Reference} for invoice {invoice.InvoiceNumber}", markedByUserId, UserRole.Admin.ToString());
+        await billingRepository.SaveChanges(cancellationToken);
+        return (invoice.ToDto(), payment.ToDto());
+    }
+
+    public async Task<(InvoiceDto Invoice, PaymentRecordDto Payment)> VoidPayment(Guid invoiceId, Guid paymentId, Guid markedByUserId, VoidPaymentRequest request, CancellationToken cancellationToken)
+    {
+        var invoice = await billingRepository.GetInvoice(invoiceId, cancellationToken)
+            ?? throw new KeyNotFoundException("Invoice not found.");
+        var payment = invoice.Payments.FirstOrDefault(x => x.Id == paymentId)
+            ?? throw new KeyNotFoundException("Payment not found.");
+
+        Require(!payment.IsVoided, "Payment is already voided.");
+        Require(invoice.Status != InvoiceStatus.Cancelled, "Cancelled invoices cannot be adjusted.");
+        Require(!string.IsNullOrWhiteSpace(request.Reason), "Void reason is required.");
+
+        payment.IsVoided = true;
+        payment.VoidedAt = clock.UtcNow;
+        payment.VoidedByUserId = markedByUserId;
+        payment.VoidReason = request.Reason.Trim();
+        ApplyPaymentTotals(invoice, invoice.Payments);
+        billingRepository.AddAudit("VoidedPayment", "Invoice", invoice.Id, $"Voided payment {payment.Reference} for invoice {invoice.InvoiceNumber}", markedByUserId, UserRole.Admin.ToString());
+        await billingRepository.SaveChanges(cancellationToken);
+        return (invoice.ToDto(), payment.ToDto());
+    }
+
+    public async Task<int> MarkOverdueInvoices(CancellationToken cancellationToken)
+    {
+        var now = clock.UtcNow;
+        var invoices = await billingRepository.GetOverdueCandidates(now, cancellationToken);
+
+        foreach (var invoice in invoices)
+        {
+            invoice.Status = InvoiceStatus.Overdue;
+            invoice.Order.InvoiceStatus = InvoiceStatus.Overdue;
+            invoice.UpdatedAt = now;
+            invoice.Order.UpdatedAt = now;
+            billingRepository.AddAudit("MarkedInvoiceOverdue", "Invoice", invoice.Id, $"Marked invoice {invoice.InvoiceNumber} overdue");
+        }
+
+        await billingRepository.SaveChanges(cancellationToken);
+        return invoices.Count;
+    }
+
+    private void ApplyPaymentTotals(Invoice invoice, IEnumerable<PaymentRecord> payments)
+    {
+        var paidAmount = payments.Where(payment => !payment.IsVoided).Sum(payment => payment.Amount);
+        invoice.PaidAmount = paidAmount;
+        invoice.OutstandingAmount = Math.Max(0, invoice.TotalAmount - paidAmount);
+        invoice.Status = invoice.OutstandingAmount <= 0
+            ? InvoiceStatus.Paid
+            : invoice.DueDate < clock.UtcNow ? InvoiceStatus.Overdue : paidAmount > 0 ? InvoiceStatus.PartiallyPaid : InvoiceStatus.Unpaid;
+        invoice.Order.InvoiceStatus = invoice.Status;
+        invoice.UpdatedAt = clock.UtcNow;
+        invoice.Order.UpdatedAt = clock.UtcNow;
+    }
+
+    private static string? NormalizeOptional(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static void Require(bool condition, string message)
+    {
+        if (!condition)
+        {
+            throw new InvalidOperationException(message);
+        }
+    }
+}

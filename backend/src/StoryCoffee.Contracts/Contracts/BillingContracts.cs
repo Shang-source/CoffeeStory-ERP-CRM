@@ -1,0 +1,68 @@
+using StoryCoffee.Domain;
+
+namespace StoryCoffee.Contracts;
+
+public sealed record InvoiceItemDto(
+    Guid Id,
+    string Description,
+    int Quantity,
+    decimal UnitPrice,
+    decimal LineTotal);
+
+public sealed record InvoiceDto(
+    Guid Id,
+    string InvoiceNumber,
+    Guid CustomerId,
+    CustomerDto? Customer,
+    Guid OrderId,
+    DateTimeOffset IssueDate,
+    DateTimeOffset DueDate,
+    decimal Subtotal,
+    decimal GstAmount,
+    decimal TotalAmount,
+    decimal PaidAmount,
+    decimal OutstandingAmount,
+    InvoiceStatus Status,
+    EmailStatus EmailStatus,
+    IReadOnlyList<InvoiceItemDto> Items,
+    IReadOnlyList<PaymentRecordDto> Payments);
+
+public sealed record PaymentRecordDto(
+    Guid Id,
+    Guid InvoiceId,
+    decimal Amount,
+    DateTimeOffset PaymentDate,
+    string PaymentMethod,
+    string Reference,
+    Guid MarkedByUserId,
+    string? Note,
+    bool IsVoided,
+    DateTimeOffset? VoidedAt,
+    Guid? VoidedByUserId,
+    string? VoidReason);
+
+public sealed record RecordPaymentRequest(
+    decimal Amount,
+    DateTimeOffset PaymentDate,
+    string PaymentMethod,
+    string Reference,
+    string? Note);
+
+public sealed record VoidPaymentRequest(string Reason);
+
+public sealed record PaymentActionResponse(InvoiceDto Invoice, PaymentRecordDto Payment);
+
+public sealed record MarkOverdueInvoicesResponse(int UpdatedCount);
+
+public sealed record PdfDownloadDto(
+    string DownloadUrl,
+    string FileName,
+    string FileKey,
+    DateTimeOffset GeneratedAt);
+
+public sealed record PdfDocumentResult(
+    string Title,
+    string FileName,
+    string FileKey,
+    DateTimeOffset GeneratedAt,
+    IReadOnlyList<string> Lines);

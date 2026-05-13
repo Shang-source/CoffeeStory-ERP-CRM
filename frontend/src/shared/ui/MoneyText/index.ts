@@ -1,0 +1,1 @@
+export { MoneyText } from './MoneyText';

@@ -1,0 +1,18 @@
+export const queryKeys = {
+  adminDashboard: ['admin', 'dashboard'] as const,
+  customerDashboard: ['customer', 'dashboard'] as const,
+  adminCustomers: ['admin', 'customers'] as const,
+  adminProducts: ['admin', 'products'] as const,
+  customerProducts: ['customer', 'products'] as const,
+  adminStandingOrders: ['admin', 'standingOrders'] as const,
+  customerStandingOrder: ['customer', 'standingOrder'] as const,
+  adminOrders: ['admin', 'orders'] as const,
+  customerOrders: ['customer', 'orders'] as const,
+  adminInvoices: ['admin', 'invoices'] as const,
+  customerInvoices: ['customer', 'invoices'] as const,
+  adminStatements: ['admin', 'statements'] as const,
+  customerStatements: ['customer', 'statements'] as const,
+  production: ['admin', 'production'] as const,
+  auditLogs: ['admin', 'logs', 'audit'] as const,
+  emailLogs: ['admin', 'logs', 'email'] as const,
+};

@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>StoryCoffee.Infrastructure</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AWSSDK.S3" Version="4.0.23" />
+    <PackageReference Include="AWSSDK.SimpleEmailV2" Version="4.0.12.13" />
+    <PackageReference Include="AWSSDK.SimpleNotificationService" Version="4.0.2.30" />
+    <PackageReference Include="MailKit" Version="4.16.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.11">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.11" />
+    <PackageReference Include="Quartz.Extensions.Hosting" Version="3.18.1" />
+    <PackageReference Include="QuestPDF" Version="2026.5.0" />
+    <PackageReference Include="StackExchange.Redis" Version="2.12.14" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\StoryCoffee.Application\StoryCoffee.Application.csproj" />
+    <ProjectReference Include="..\StoryCoffee.Contracts\StoryCoffee.Contracts.csproj" />
+    <ProjectReference Include="..\StoryCoffee.Domain\StoryCoffee.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

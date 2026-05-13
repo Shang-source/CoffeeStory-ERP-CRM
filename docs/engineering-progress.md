@@ -1,0 +1,41 @@
+# StoryCoffee Engineering Progress
+
+## Implemented
+
+- Redis package and typed options are registered, with `/ready` checking Redis when enabled.
+- Quartz hosting package is registered and can run the standing-order generation job when `Quartz:Enabled=true`.
+- Serilog is wired as the host logger with console output and configurable minimum levels.
+- FluentValidation is wired through an MVC action filter for key write contracts.
+- Docker Compose includes PostgreSQL, Redis, API, frontend, LocalStack, and MailHog.
+- Helm includes Redis and routes `/api`, `/health`, and `/ready` to the API.
+- CI, Playwright smoke, k6 smoke, and Terraform placeholders are present.
+- OrderWorkflow, Production, and Catalog use cases now orchestrate repositories instead of direct EF service classes.
+- `IClock`, `IUnitOfWork`, `outbox_messages`, and an Outbox retry worker are present for transactional side-effect handling.
+- SMTP, S3-compatible storage, and QuestPDF provider implementations are wired behind options.
+- API integration tests use PostgreSQL/Redis Testcontainers; unit-style service tests still use EF InMemory for speed.
+- API integration tests reset PostgreSQL state per test to avoid cross-test order/customer/production pollution.
+- The frontend imports generated OpenAPI operation types from `frontend/src/shared/api/generated/schema.ts` through `frontend/src/shared/api/openapi.ts`.
+- CI checks OpenAPI generated client drift, and `scripts/smoke-storycoffee.mjs` verifies the main seeded API workflow.
+- The legacy `production_progress` model is removed from the current schema and dropped by migration.
+- Customer-specific price books now drive standing-order item pricing and generated order snapshots.
+- Suspended or archived customer accounts are blocked from login and authenticated customer APIs.
+- Admin order batch-to-production uses the batch API from the frontend.
+- AWS SES v2 is available as a production email provider behind the existing `IEmailSender` interface.
+- Outbox processing now claims PostgreSQL rows with `FOR UPDATE SKIP LOCKED` and reclaims stale processing locks.
+- SES webhook intake records delivery events and reconciles Bounce/Complaint/Delivery state back to EmailLog, invoice email status, and statement email status.
+- SES/SNS webhook handling verifies AWS SNS signatures by default, validates the signing certificate URL/topic ARN when configured, and can auto-confirm subscriptions after verification.
+- Backend namespaces now align with project boundaries: `StoryCoffee.Domain`, `StoryCoffee.Contracts`, `StoryCoffee.Application.*`, `StoryCoffee.Infrastructure.*`, and `StoryCoffee.Api.*`.
+- Dependency injection is split by layer: API registers HTTP concerns, Application registers use cases, and Infrastructure registers persistence/providers/jobs/workers.
+- Authentication and infrastructure-facing service ports are exposed from Application interfaces instead of leaking infrastructure implementation namespaces into controllers.
+- Application, Infrastructure, API controllers, and tests are grouped by bounded module folders so business areas are easier to navigate and evolve independently.
+- Full backend tests pass under OrbStack/Testcontainers, and an isolated fresh `docker compose up --build` validates API/frontend/PostgreSQL/Redis/LocalStack/MailHog health without touching the existing dev stack.
+- The previous coupled `CatalogUseCase` is split into `CustomerUseCase` and `ProductCatalogUseCase`, with separate repository ports, infrastructure repositories, DI registrations, controllers, and module tests.
+- The local project folder is initialized as a Git repository and staged for an initial baseline commit.
+- Frontend P0 Vitest coverage now includes login success/failure, role guard redirects, admin batch-to-production, admin price-book save/repricing, and customer standing-order effective price rendering.
+
+## Remaining
+
+- Create the initial commit and connect a remote repository when the target Git provider/repo name is confirmed.
+- Add real AWS environment values for SES domain/SNS topic/IAM role before production deployment.
+- Replace the remaining CSV/download helper fetches with typed non-JSON OpenAPI helpers if binary/export contract enforcement becomes necessary.
+- Expand Playwright and k6 coverage beyond smoke tests.

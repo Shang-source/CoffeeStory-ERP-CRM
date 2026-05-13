@@ -1,0 +1,19 @@
+namespace StoryCoffee.Application.Customers;
+
+public static class CustomerMapping
+{
+    public static CustomerDto ToDto(this Customer customer)
+    {
+        return new CustomerDto(
+            customer.Id,
+            customer.BusinessName,
+            customer.ContactPerson,
+            customer.Email,
+            customer.Phone,
+            customer.BillingAddress,
+            customer.DeliveryAddress,
+            customer.PaymentTerms,
+            customer.AccountStatus,
+            customer.CreatedAt);
+    }
+}

@@ -1,0 +1,66 @@
+imagePullPolicy: IfNotPresent
+
+frontend:
+  image: storycoffee-frontend:dev
+  replicas: 1
+  port: 80
+
+api:
+  image: storycoffee-api:dev
+  replicas: 1
+  port: 8080
+  jwtSecret: dev-only-change-me-storycoffee-phase-one-secret
+  connectionString: Host=storycoffee-postgres;Port=5432;Database=storycoffee;Username=storycoffee;Password=storycoffee_password
+  redisConnectionString: storycoffee-redis:6379
+  documentStorageProvider: Local
+  documentStorageRoot: /var/storycoffee-files
+  documentStorageBucketName: storycoffee-documents
+  documentStorageS3Region: ap-southeast-2
+  documentStorageServiceUrl: ""
+  documentStorageAccessKey: ""
+  documentStorageSecretKey: ""
+  documentStorageForcePathStyle: true
+  emailProvider: Stub
+  emailFromAddress: no-reply@storycoffee.co.nz
+  emailSmtpHost: localhost
+  emailSmtpPort: "1025"
+  emailSmtpUsername: ""
+  emailSmtpPassword: ""
+  emailUseStartTls: false
+  emailSesRegion: ap-southeast-2
+  emailSesEndpointUrl: ""
+  emailSesConfigurationSet: ""
+  emailWebhookSecret: ""
+  emailVerifySnsSignature: true
+  emailAutoConfirmSnsSubscriptions: false
+  emailSnsTopicArn: ""
+  outboxEnabled: true
+  outboxLockTimeoutSeconds: "300"
+
+postgres:
+  image: postgres:16
+  database: storycoffee
+  username: storycoffee
+  password: storycoffee_password
+  storage: 2Gi
+
+redis:
+  enabled: true
+  image: redis:7
+  port: 6379
+
+localstack:
+  enabled: false
+  image: localstack/localstack:3
+  port: 4566
+
+mailhog:
+  enabled: false
+  image: mailhog/mailhog:v1.0.1
+  smtpPort: 1025
+  webPort: 8025
+
+ingress:
+  enabled: false
+  className: nginx
+  host: storycoffee.local

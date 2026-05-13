@@ -1,0 +1,48 @@
+imagePullPolicy: IfNotPresent
+
+frontend:
+  image: storycoffee-frontend:dev
+  replicas: 1
+
+api:
+  image: storycoffee-api:dev
+  jwtSecret: dev-only-change-me-storycoffee-phase-one-secret
+  connectionString: Host=storycoffee-postgres;Port=5432;Database=storycoffee;Username=storycoffee;Password=storycoffee_password
+  redisConnectionString: storycoffee-redis:6379
+  documentStorageProvider: S3
+  documentStorageBucketName: storycoffee-documents
+  documentStorageS3Region: ap-southeast-2
+  documentStorageServiceUrl: http://storycoffee-localstack:4566
+  documentStorageAccessKey: test
+  documentStorageSecretKey: test
+  documentStorageForcePathStyle: true
+  emailProvider: Smtp
+  emailSmtpHost: storycoffee-mailhog
+  emailSmtpPort: "1025"
+  emailUseStartTls: false
+  emailSesRegion: ap-southeast-2
+  emailSesEndpointUrl: ""
+  emailSesConfigurationSet: ""
+  emailWebhookSecret: ""
+  emailVerifySnsSignature: false
+  emailAutoConfirmSnsSubscriptions: false
+  emailSnsTopicArn: ""
+  outboxEnabled: true
+  outboxLockTimeoutSeconds: "300"
+
+postgres:
+  storage: 2Gi
+
+redis:
+  enabled: true
+
+localstack:
+  enabled: true
+
+mailhog:
+  enabled: true
+
+ingress:
+  enabled: false
+  className: traefik
+  host: storycoffee.local
