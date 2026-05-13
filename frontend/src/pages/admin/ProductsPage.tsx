@@ -2,21 +2,18 @@ import { useState } from 'react';
 import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Chip, IconButton, Alert, CircularProgress } from '@mui/material';
 import { Add, Archive, Edit } from '@mui/icons-material';
 import { toast } from 'sonner';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Product } from '@/entities/types';
 import ProductDialog from '@/features/productCreateEdit/ui/ProductDialog';
 import ConfirmDialog from '@/shared/ui/ConfirmDialog/ConfirmDialog';
-import { getAdminProducts } from '@/entities/product/api/productApi';
+import { useAdminProductsQuery } from '@/entities/product/api/productQueries';
 import { archiveAdminProduct } from '@/features/productArchive/api/productArchiveApi';
 import { createAdminProduct, type ProductPayload, updateAdminProduct } from '@/features/productCreateEdit/api/productCreateEditApi';
 import { queryKeys } from '@/shared/api/queryKeys';
 
 export default function Products() {
   const queryClient = useQueryClient();
-  const { data: products = [], isLoading, error } = useQuery({
-    queryKey: queryKeys.adminProducts,
-    queryFn: getAdminProducts,
-  });
+  const { data: products = [], isLoading, error } = useAdminProductsQuery();
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [productToArchive, setProductToArchive] = useState<Product | null>(null);

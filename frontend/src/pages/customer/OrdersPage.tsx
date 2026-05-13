@@ -1,11 +1,9 @@
 import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, IconButton, Collapse, Alert, CircularProgress } from '@mui/material';
 import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { formatOrderStatus, getOrderStatusColor } from '@/shared/status/statusFormat';
 import { Order } from '@/entities/types';
-import { getCustomerOrders } from '@/entities/order/api/orderApi';
-import { queryKeys } from '@/shared/api/queryKeys';
+import { useCustomerOrdersQuery } from '@/entities/order/api/orderQueries';
 
 function OrderRow({ order }: { order: Order }) {
   const [open, setOpen] = useState(false);
@@ -84,10 +82,7 @@ function OrderRow({ order }: { order: Order }) {
 }
 
 export default function CustomerOrders() {
-  const { data: orders = [], isLoading, error } = useQuery({
-    queryKey: queryKeys.customerOrders,
-    queryFn: getCustomerOrders,
-  });
+  const { data: orders = [], isLoading, error } = useCustomerOrdersQuery();
 
   if (isLoading) {
     return (

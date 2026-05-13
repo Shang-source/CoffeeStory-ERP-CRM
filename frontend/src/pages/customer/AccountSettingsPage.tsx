@@ -3,9 +3,10 @@ import { toast } from 'sonner';
 import { useAuth } from '@/app/providers/AuthProvider';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Customer } from '@/entities/types';
-import { getCustomerProfile, updateCustomerProfile } from '@/entities/customer/api/customerApi';
+import { updateCustomerProfile } from '@/entities/customer/api/customerApi';
+import { useCustomerProfileQuery } from '@/entities/customer/api/customerQueries';
 import { changeCustomerPassword } from '@/features/passwordChange/api/passwordChangeApi';
 import { queryKeys } from '@/shared/api/queryKeys';
 
@@ -13,11 +14,7 @@ export default function AccountSettings() {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const queryClient = useQueryClient();
-  const profileQuery = useQuery({
-    queryKey: queryKeys.customerProfile,
-    queryFn: getCustomerProfile,
-    enabled: Boolean(user?.customerId),
-  });
+  const profileQuery = useCustomerProfileQuery(Boolean(user?.customerId));
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: '',

@@ -2,11 +2,11 @@ import { useMemo, useState } from 'react';
 import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, MenuItem, Stack, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow, Tabs, TextField, Typography } from '@mui/material';
 import { Download } from '@mui/icons-material';
 import { toast } from 'sonner';
-import { useQuery } from '@tanstack/react-query';
 import { AuditLog, EmailLog, EmailStatus } from '@/entities/types';
-import { exportAuditLogs, getAuditLogs, type LogQueryParams } from '@/entities/auditLog/api/auditLogApi';
-import { exportEmailLogs, getEmailLogs } from '@/entities/emailLog/api/emailLogApi';
-import { queryKeys } from '@/shared/api/queryKeys';
+import { exportAuditLogs, type LogQueryParams } from '@/entities/auditLog/api/auditLogApi';
+import { useAuditLogsQuery } from '@/entities/auditLog/api/auditLogQueries';
+import { exportEmailLogs } from '@/entities/emailLog/api/emailLogApi';
+import { useEmailLogsQuery } from '@/entities/emailLog/api/emailLogQueries';
 
 const emailStatuses: EmailStatus[] = ['Pending', 'Sent', 'Failed', 'Bounced'];
 type LogFilters = Pick<LogQueryParams, 'search' | 'entityType' | 'action' | 'status'> & {
@@ -58,17 +58,8 @@ export default function Logs() {
     pageSize: emailRowsPerPage,
   }), [appliedFilters.status, commonParams, emailPage, emailRowsPerPage]);
 
-  const auditQuery = useQuery({
-    queryKey: queryKeys.auditLogsList(auditParams),
-    queryFn: () => getAuditLogs(auditParams),
-    enabled: tab === 'audit',
-  });
-
-  const emailQuery = useQuery({
-    queryKey: queryKeys.emailLogsList(emailParams),
-    queryFn: () => getEmailLogs(emailParams),
-    enabled: tab === 'email',
-  });
+  const auditQuery = useAuditLogsQuery(auditParams, tab === 'audit');
+  const emailQuery = useEmailLogsQuery(emailParams, tab === 'email');
 
   const auditLogs = auditQuery.data?.items ?? [];
   const emailLogs = emailQuery.data?.items ?? [];

@@ -3,9 +3,9 @@ import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableC
 import { Send, Download, ArrowBack } from '@mui/icons-material';
 import { formatInvoiceStatus, getInvoiceStatusColor } from '@/shared/status/statusFormat';
 import { toast } from 'sonner';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Statement } from '@/entities/types';
-import { getAdminStatement } from '@/entities/statement/api/statementApi';
+import { useAdminStatementQuery } from '@/entities/statement/api/statementQueries';
 import { downloadAdminStatementPdf, sendStatementEmail } from '@/features/statementActions/api/statementActionsApi';
 import { queryKeys } from '@/shared/api/queryKeys';
 
@@ -13,11 +13,7 @@ export default function StatementDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { data: statement, isLoading, error } = useQuery({
-    queryKey: queryKeys.adminStatement(id ?? ''),
-    queryFn: () => getAdminStatement(id ?? ''),
-    enabled: Boolean(id),
-  });
+  const { data: statement, isLoading, error } = useAdminStatementQuery(id);
 
   const sendStatementMutation = useMutation({
     mutationFn: (statementId: string) => sendStatementEmail(statementId),

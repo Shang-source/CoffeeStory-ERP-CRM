@@ -2,23 +2,17 @@ import { useEffect, useState } from 'react';
 import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, TextField, Select, MenuItem, FormControl, InputLabel, IconButton, Chip, Dialog, DialogTitle, DialogContent, DialogActions, Grid, Alert, CircularProgress } from '@mui/material';
 import { Add, Delete, Edit, Save } from '@mui/icons-material';
 import { toast } from 'sonner';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { OrderFrequency, StandingOrder } from '@/entities/types';
-import { getCustomerProducts } from '@/entities/product/api/productApi';
-import { getCustomerStandingOrder } from '@/entities/standingOrder/api/standingOrderApi';
+import { useCustomerProductsQuery } from '@/entities/product/api/productQueries';
+import { useCustomerStandingOrderQuery } from '@/entities/standingOrder/api/standingOrderQueries';
 import { updateCustomerStandingOrder } from '@/features/standingOrderEditor/api/standingOrderEditorApi';
 import { queryKeys } from '@/shared/api/queryKeys';
 
 export default function StandingOrderPage() {
   const queryClient = useQueryClient();
-  const standingOrderQuery = useQuery({
-    queryKey: queryKeys.customerStandingOrder,
-    queryFn: getCustomerStandingOrder,
-  });
-  const productsQuery = useQuery({
-    queryKey: queryKeys.customerProducts,
-    queryFn: getCustomerProducts,
-  });
+  const standingOrderQuery = useCustomerStandingOrderQuery();
+  const productsQuery = useCustomerProductsQuery();
   const [standingOrder, setStandingOrder] = useState<StandingOrder | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [openAddDialog, setOpenAddDialog] = useState(false);

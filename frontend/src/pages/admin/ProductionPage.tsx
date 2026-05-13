@@ -4,17 +4,14 @@ import { Print, Download, PlayArrow, Edit as EditIcon, CheckCircle } from '@mui/
 import { formatProductionStatus, getProductionStatusColor } from '@/shared/status/statusFormat';
 import { ProductionItem } from '@/entities/types';
 import { toast } from 'sonner';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getCurrentProduction } from '@/entities/production/api/productionApi';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useCurrentProductionQuery } from '@/entities/production/api/productionQueries';
 import { completeProduction, startProduction, updateProducedQuantity } from '@/features/productionItemUpdate/api/productionItemUpdateApi';
 import { queryKeys } from '@/shared/api/queryKeys';
 
 export default function ProductionList() {
   const queryClient = useQueryClient();
-  const { data: productionItems = [], isLoading, error } = useQuery({
-    queryKey: queryKeys.production,
-    queryFn: getCurrentProduction,
-  });
+  const { data: productionItems = [], isLoading, error } = useCurrentProductionQuery();
   const [selectedItem, setSelectedItem] = useState<ProductionItem | null>(null);
   const [updateDialog, setUpdateDialog] = useState(false);
   const [updateQuantity, setUpdateQuantity] = useState('');

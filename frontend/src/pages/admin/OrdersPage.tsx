@@ -3,14 +3,13 @@ import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableC
 import { KeyboardArrowDown, KeyboardArrowUp, MoreVert, PlayArrow } from '@mui/icons-material';
 import { formatOrderStatus, formatInvoiceStatus, formatShipmentStatus, getOrderStatusColor, getInvoiceStatusColor, getShipmentStatusColor } from '@/shared/status/statusFormat';
 import { toast } from 'sonner';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Order } from '@/entities/types';
 import { useNavigate } from 'react-router';
 import ConfirmDialog from '@/shared/ui/ConfirmDialog/ConfirmDialog';
-import { getAdminOrders } from '@/entities/order/api/orderApi';
-import { batchSendOrdersToProduction } from '@/features/batchToProduction/api/batchToProductionApi';
+import { useAdminOrdersQuery } from '@/entities/order/api/orderQueries';
+import { useBatchToProductionMutation } from '@/features/batchToProduction/model/batchToProductionMutations';
 import { cancelOrder, generateInvoice, markOrderReadyToShip, markOrderShipped, sendInvoice, sendOrderToProduction } from '@/features/orderWorkflow/api/orderWorkflowApi';
-import { queryKeys } from '@/shared/api/queryKeys';
+import { useOrderWorkflowMutation } from '@/features/orderWorkflow/model/orderWorkflowMutations';
 
 interface OrderRowProps {
   order: Order;
@@ -238,47 +237,10 @@ function OrderRow({ order, onOrderAction }: OrderRowProps) {
 }
 
 export default function Orders() {
-  const queryClient = useQueryClient();
-  const { data: orders = [], isLoading, error } = useQuery({
-    queryKey: queryKeys.adminOrders,
-    queryFn: getAdminOrders,
-  });
   const navigate = useNavigate();
-
-  const orderActionMutation = useMutation({
-    mutationFn: ({ action }: { action: () => Promise<Order>; successMessage: string }) => action(),
-    onSuccess: (updatedOrder, variables) => {
-      queryClient.setQueryData<Order[]>(queryKeys.adminOrders, (currentOrders = []) =>
-        currentOrders.map((order) => order.id === updatedOrder.id ? updatedOrder : order)
-      );
-      void queryClient.invalidateQueries({ queryKey: queryKeys.adminInvoices });
-      toast.success(variables.successMessage);
-    },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Order action failed'),
-  });
-
-  const batchToProductionMutation = useMutation({
-    mutationFn: (orderIds: string[]) => batchSendOrdersToProduction(orderIds),
-    onSuccess: (result, orderIds) => {
-      const updatedOrders = result.orders;
-      queryClient.setQueryData<Order[]>(queryKeys.adminOrders, (currentOrders = []) =>
-        currentOrders.map((order) => updatedOrders.find((updated) => updated.id === order.id) ?? order)
-      );
-      void queryClient.invalidateQueries({ queryKey: queryKeys.production });
-      toast.success(`${orderIds.length} order${orderIds.length > 1 ? 's' : ''} sent to production successfully`, {
-        description: 'These orders have been added to the Production List and are now in production.',
-      });
-      setTimeout(() => {
-        toast.info('View Production List to track progress', {
-          action: {
-            label: 'Go to Production',
-            onClick: () => navigate('/admin/production'),
-          },
-        });
-      }, 1500);
-    },
-    onError: (err) => toast.error(err instanceof Error ? err.message : 'Batch action failed'),
-  });
+  const { data: orders = [], isLoading, error } = useAdminOrdersQuery();
+  const orderActionMutation = useOrderWorkflowMutation();
+  const batchToProductionMutation = useBatchToProductionMutation(() => navigate('/admin/production'));
 
   const handleOrderAction = async (action: () => Promise<Order>, successMessage: string) => {
     try {

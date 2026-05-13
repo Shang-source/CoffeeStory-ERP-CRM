@@ -3,10 +3,11 @@ import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableC
 import { Add, Send, Visibility } from '@mui/icons-material';
 import { Link } from 'react-router';
 import { toast } from 'sonner';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import CreateCustomerDialog from '@/features/customerCreate/ui/CreateCustomerDialog';
 import { Customer } from '@/entities/types';
-import { getAdminCustomers, type CustomerPayload } from '@/entities/customer/api/customerApi';
+import { type CustomerPayload } from '@/entities/customer/api/customerApi';
+import { useAdminCustomersQuery } from '@/entities/customer/api/customerQueries';
 import { createAdminCustomer } from '@/features/customerCreate/api/customerCreateApi';
 import { sendAdminCustomerInvite } from '@/features/customerInvite/api/customerInviteApi';
 import { queryKeys } from '@/shared/api/queryKeys';
@@ -14,10 +15,7 @@ import { queryKeys } from '@/shared/api/queryKeys';
 export default function Customers() {
   const queryClient = useQueryClient();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const { data: customers = [], isLoading, error } = useQuery({
-    queryKey: queryKeys.adminCustomers,
-    queryFn: getAdminCustomers,
-  });
+  const { data: customers = [], isLoading, error } = useAdminCustomersQuery();
 
   const createCustomerMutation = useMutation({
     mutationFn: (customer: CustomerPayload) => createAdminCustomer(customer),

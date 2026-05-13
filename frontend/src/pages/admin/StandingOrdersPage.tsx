@@ -25,11 +25,11 @@ import {
 } from '@mui/material';
 import { Add, Cancel as CancelIcon, Delete, Edit, Pause, PlayArrow, RestartAlt } from '@mui/icons-material';
 import { toast } from 'sonner';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { OrderFrequency, StandingOrder, StandingOrderStatus } from '@/entities/types';
-import { getAdminCustomers } from '@/entities/customer/api/customerApi';
-import { getProducts } from '@/entities/product/api/productApi';
-import { getAdminStandingOrders } from '@/entities/standingOrder/api/standingOrderApi';
+import { useAdminCustomersQuery } from '@/entities/customer/api/customerQueries';
+import { useProductsQuery } from '@/entities/product/api/productQueries';
+import { useAdminStandingOrdersQuery } from '@/entities/standingOrder/api/standingOrderQueries';
 import { createAdminStandingOrder, type StandingOrderPayload, updateAdminStandingOrder } from '@/features/standingOrderEditor/api/standingOrderEditorApi';
 import { cancelStandingOrder, generateStandingOrderNow, pauseStandingOrder, resumeStandingOrder } from '@/features/standingOrderLifecycle/api/standingOrderLifecycleApi';
 import { queryKeys } from '@/shared/api/queryKeys';
@@ -65,18 +65,9 @@ const emptyForm: StandingOrderFormState = {
 
 export default function StandingOrders() {
   const queryClient = useQueryClient();
-  const standingOrdersQuery = useQuery({
-    queryKey: queryKeys.adminStandingOrders,
-    queryFn: getAdminStandingOrders,
-  });
-  const customersQuery = useQuery({
-    queryKey: queryKeys.adminCustomers,
-    queryFn: getAdminCustomers,
-  });
-  const productsQuery = useQuery({
-    queryKey: queryKeys.adminProducts,
-    queryFn: getProducts,
-  });
+  const standingOrdersQuery = useAdminStandingOrdersQuery();
+  const customersQuery = useAdminCustomersQuery();
+  const productsQuery = useProductsQuery();
   const [editingOrder, setEditingOrder] = useState<StandingOrder | null>(null);
   const [formData, setFormData] = useState<StandingOrderFormState>(emptyForm);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
