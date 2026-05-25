@@ -12,6 +12,7 @@ public sealed record CustomerDto(
     string DeliveryAddress,
     string PaymentTerms,
     AccountStatus AccountStatus,
+    bool HasPortalUser,
     DateTimeOffset CreatedAt);
 
 public sealed record OrderItemDto(
@@ -39,12 +40,30 @@ public sealed record OrderDto(
     decimal TotalAmount,
     IReadOnlyList<OrderItemDto> Items);
 
+public sealed record OrderQueryRequest(
+    string? Search,
+    OrderStatus? OrderStatus,
+    InvoiceStatus? InvoiceStatus,
+    ShipmentStatus? ShipmentStatus,
+    Guid? CustomerId,
+    DateTimeOffset? From,
+    DateTimeOffset? To);
+
 public sealed record BatchToProductionRequest(IReadOnlyList<Guid> OrderIds);
 
 public sealed record BatchToProductionResponse(
     int Updated,
     IReadOnlyList<OrderDto> Orders,
     ProductionBatchDto ProductionBatch);
+
+public sealed record BatchShipAndInvoiceRequest(IReadOnlyList<Guid> OrderIds);
+
+public sealed record BatchShipAndInvoiceResponse(
+    int Updated,
+    IReadOnlyList<OrderDto> Orders,
+    int InvoiceEmailsSent,
+    int StatementEmailsSent,
+    IReadOnlyList<string> EmailFailures);
 
 public sealed record ApiError(
     string Code,

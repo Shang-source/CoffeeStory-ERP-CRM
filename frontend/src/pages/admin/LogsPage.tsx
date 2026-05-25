@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, MenuItem, Stack, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow, Tabs, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, CircularProgress, MenuItem, Stack, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow, Tabs, TextField, Typography } from '@mui/material';
 import { Download } from '@mui/icons-material';
 import { toast } from 'sonner';
 import { AuditLog, EmailLog, EmailStatus } from '@/entities/types';
@@ -7,6 +7,8 @@ import { exportAuditLogs, type LogQueryParams } from '@/entities/auditLog/api/au
 import { useAuditLogsQuery } from '@/entities/auditLog/api/auditLogQueries';
 import { exportEmailLogs } from '@/entities/emailLog/api/emailLogApi';
 import { useEmailLogsQuery } from '@/entities/emailLog/api/emailLogQueries';
+import { formatEmailStatus, getEmailStatusColor } from '@/shared/status/statusFormat';
+import { StatusChip } from '@/shared/ui/StatusChip';
 
 const emailStatuses: EmailStatus[] = ['Pending', 'Sent', 'Failed', 'Bounced'];
 type LogFilters = Pick<LogQueryParams, 'search' | 'entityType' | 'action' | 'status'> & {
@@ -215,7 +217,7 @@ export default function Logs() {
                         <TableCell>{log.recipientEmail}</TableCell>
                         <TableCell>{log.subject}</TableCell>
                         <TableCell>
-                          <Chip label={log.status} size="small" color={log.status === 'Sent' ? 'success' : log.status === 'Failed' ? 'error' : 'default'} />
+                          <StatusChip label={formatEmailStatus(log.status)} color={getEmailStatusColor(log.status)} />
                         </TableCell>
                         <TableCell>
                           <Typography variant="body2">{log.provider ?? 'N/A'}</Typography>

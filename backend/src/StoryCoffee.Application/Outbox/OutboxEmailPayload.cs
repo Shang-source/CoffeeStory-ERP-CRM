@@ -6,7 +6,8 @@ public sealed record OutboxEmailPayload(
     Guid EmailLogId,
     string RecipientEmail,
     string Subject,
-    string Body);
+    string Body,
+    IReadOnlyList<EmailAttachment>? Attachments = null);
 
 public static class OutboxMessageTypes
 {

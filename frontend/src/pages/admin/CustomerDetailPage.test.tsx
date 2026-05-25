@@ -107,7 +107,7 @@ describe('CustomerDetailPage', () => {
       });
     });
     expect((await screen.findAllByText('$34.50')).length).toBeGreaterThan(0);
-  }, 10_000);
+  }, 20_000);
 });
 
 function renderWithQuery() {

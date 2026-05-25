@@ -39,6 +39,19 @@ public sealed class EfStatementRepository(AppDbContext db, IClock clock) : IStat
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<Invoice>> GetOpenInvoicesForCustomer(Guid customerId, CancellationToken cancellationToken)
+    {
+        return await db.Invoices
+            .Include(invoice => invoice.Customer)
+            .Where(invoice => invoice.CustomerId == customerId &&
+                invoice.OutstandingAmount > 0 &&
+                (invoice.Status == InvoiceStatus.Unpaid ||
+                 invoice.Status == InvoiceStatus.PartiallyPaid ||
+                 invoice.Status == InvoiceStatus.Overdue))
+            .OrderBy(invoice => invoice.DueDate)
+            .ToListAsync(cancellationToken);
+    }
+
     public Task<Statement?> GetCustomerStatementInPeriod(Guid customerId, DateTimeOffset periodStart, DateTimeOffset periodEnd, CancellationToken cancellationToken)
     {
         return BaseQuery()
@@ -46,6 +59,15 @@ public sealed class EfStatementRepository(AppDbContext db, IClock clock) : IStat
                 statement.CustomerId == customerId &&
                 statement.StatementDate >= periodStart &&
                 statement.StatementDate < periodEnd, cancellationToken);
+    }
+
+    public Task<Statement?> GetEditableCustomerStatement(Guid customerId, CancellationToken cancellationToken)
+    {
+        return BaseQuery()
+            .Where(statement => statement.CustomerId == customerId &&
+                (statement.Status == StatementStatus.Draft || statement.Status == StatementStatus.ReadyToSend))
+            .OrderByDescending(statement => statement.StatementDate)
+            .FirstOrDefaultAsync(cancellationToken);
     }
 
     public void AddStatement(Statement statement)

@@ -21,6 +21,7 @@ public static class OrderMapping
                 order.Customer.DeliveryAddress,
                 order.Customer.PaymentTerms,
                 order.Customer.AccountStatus,
+                order.Customer.Users.Any(user => user.Role == UserRole.Customer && user.IsActive),
                 order.Customer.CreatedAt),
             order.StandingOrderId,
             order.GeneratedAt,

@@ -5,7 +5,6 @@ import {
   Button,
   Card,
   CardContent,
-  Chip,
   Dialog,
   DialogActions,
   DialogContent,
@@ -33,6 +32,8 @@ import { type StandingOrderPayload } from '@/features/standingOrderEditor/api/st
 import { useSaveAdminStandingOrderMutation } from '@/features/standingOrderEditor/model/standingOrderEditorMutations';
 import { cancelStandingOrder, pauseStandingOrder, resumeStandingOrder } from '@/features/standingOrderLifecycle/api/standingOrderLifecycleApi';
 import { useGenerateStandingOrderNowMutation, useStandingOrderStatusActionMutation } from '@/features/standingOrderLifecycle/model/standingOrderLifecycleMutations';
+import { formatStandingOrderStatus, getStandingOrderStatusColor } from '@/shared/status/statusFormat';
+import { StatusChip } from '@/shared/ui/StatusChip';
 
 const frequencies: OrderFrequency[] = ['Weekly', 'Fortnightly', 'Monthly', 'ManualOnly'];
 const statuses: StandingOrderStatus[] = ['Active', 'Paused', 'Cancelled'];
@@ -228,11 +229,7 @@ export default function StandingOrders() {
                       <TableCell>{order.frequency}</TableCell>
                       <TableCell>{order.nextClosingDate.toLocaleDateString()}</TableCell>
                       <TableCell>
-                        <Chip
-                          label={order.status}
-                          color={order.status === 'Active' ? 'success' : order.status === 'Paused' ? 'warning' : 'default'}
-                          size="small"
-                        />
+                        <StatusChip label={formatStandingOrderStatus(order.status)} color={getStandingOrderStatusColor(order.status)} />
                       </TableCell>
                       <TableCell align="right">${estimatedAmount.toFixed(2)}</TableCell>
                       <TableCell align="center">

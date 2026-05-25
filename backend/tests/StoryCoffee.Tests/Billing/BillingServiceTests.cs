@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using System.Text.Json;
 using StoryCoffee.Application.Common;
 using StoryCoffee.Contracts;
 using StoryCoffee.Infrastructure.Data;
@@ -42,7 +43,9 @@ public sealed class BillingServiceTests
 
         Assert.Equal(InvoiceStatus.Paid, result.Invoice.Status);
         Assert.Equal(0, result.Invoice.OutstandingAmount);
-        Assert.Equal(InvoiceStatus.Paid, (await db.Orders.FindAsync(invoice.OrderId))!.InvoiceStatus);
+        var order = (await db.Orders.FindAsync(invoice.OrderId))!;
+        Assert.Equal(InvoiceStatus.Paid, order.InvoiceStatus);
+        Assert.Equal(OrderStatus.Completed, order.OrderStatus);
         Assert.Contains(await db.AuditLogs.ToListAsync(), log => log.Action == "RecordedPayment" && log.EntityId == invoice.Id);
     }
 
@@ -88,6 +91,28 @@ public sealed class BillingServiceTests
     }
 
     [Fact]
+    public async Task VoidPayment_ReopensCompletedOrderWhenInvoiceIsNoLongerPaid()
+    {
+        var services = await CreateServices();
+        var db = services.GetRequiredService<AppDbContext>();
+        var invoice = await db.Invoices.FirstAsync(x => x.Status == InvoiceStatus.Unpaid);
+        var admin = await db.Users.FirstAsync(x => x.Role == UserRole.Admin);
+        var service = services.GetRequiredService<IBillingService>();
+        var recorded = await service.RecordPayment(invoice.Id, admin.Id, new RecordPaymentRequest(
+            invoice.OutstandingAmount,
+            DateTimeOffset.UtcNow,
+            "BankTransfer",
+            "VOID-FULL",
+            null), CancellationToken.None);
+
+        await service.VoidPayment(invoice.Id, recorded.Payment.Id, admin.Id, new VoidPaymentRequest("Returned payment"), CancellationToken.None);
+
+        var order = (await db.Orders.FindAsync(invoice.OrderId))!;
+        Assert.Equal(InvoiceStatus.Unpaid, order.InvoiceStatus);
+        Assert.Equal(OrderStatus.Shipped, order.OrderStatus);
+    }
+
+    [Fact]
     public async Task MarkOverdueInvoices_UpdatesDueOpenInvoices()
     {
         var services = await CreateServices();
@@ -112,7 +137,9 @@ public sealed class BillingServiceTests
         var db = services.GetRequiredService<AppDbContext>();
         var order = await db.Orders
             .Include(x => x.Customer)
+            .Include(x => x.Items)
             .FirstAsync(x => x.OrderStatus == OrderStatus.ReadyToShip);
+        order.Items.First().Notes = "Whole bean";
         var invoice = new Invoice
         {
             Id = Guid.NewGuid(),
@@ -131,13 +158,27 @@ public sealed class BillingServiceTests
             Status = InvoiceStatus.Draft,
             EmailStatus = EmailStatus.NotSent
         };
+        foreach (var item in order.Items)
+        {
+            invoice.Items.Add(new InvoiceItem
+            {
+                Id = Guid.NewGuid(),
+                Description = item.ProductNameSnapshot,
+                Quantity = item.Quantity,
+                UnitPrice = item.UnitPriceSnapshot,
+                LineTotal = item.LineTotal
+            });
+        }
+
         order.Invoice = invoice;
         order.InvoiceStatus = InvoiceStatus.Draft;
         db.Invoices.Add(invoice);
         await db.SaveChangesAsync();
         var service = services.GetRequiredService<IBillingService>();
+        var generator = services.GetRequiredService<IPdfGenerator>();
 
         var result = await service.GenerateInvoicePdf(invoice.Id, order.CustomerId, CancellationToken.None);
+        var generatedPdf = generator.Generate(result);
 
         var storedInvoice = await db.Invoices.AsNoTracking().SingleAsync(x => x.Id == invoice.Id);
         var storedOrder = await db.Orders.AsNoTracking().SingleAsync(x => x.Id == order.Id);
@@ -146,7 +187,69 @@ public sealed class BillingServiceTests
         Assert.Equal("invoices/INV-PDF-TEST.pdf", storedInvoice.PdfFileKey);
         Assert.NotNull(storedInvoice.PdfGeneratedAt);
         Assert.Equal("INV-PDF-TEST.pdf", result.FileName);
+        Assert.Equal("105-912-471", result.Invoice!.Company.GstNumber);
+        Assert.Equal(order.Customer.Email, result.Invoice.CustomerEmail);
+        Assert.Equal("12-3077-0789998-00", result.Invoice.Company.BankAccountNumber);
+        Assert.Contains(result.Invoice.Items, item => item.Note == "Whole bean");
+        Assert.Equal("%PDF", System.Text.Encoding.ASCII.GetString(generatedPdf, 0, 4));
         Assert.Contains(await db.AuditLogs.ToListAsync(), log => log.Action == "GeneratedInvoicePdf" && log.EntityId == invoice.Id);
+    }
+
+    [Fact]
+    public async Task SendInvoiceEmail_AttachesBrandedPdfAndMarksUnpaid()
+    {
+        var services = await CreateServices();
+        var db = services.GetRequiredService<AppDbContext>();
+        var order = await db.Orders
+            .Include(x => x.Customer)
+            .Include(x => x.Items)
+            .FirstAsync(x => x.OrderStatus == OrderStatus.ReadyToShip);
+        var invoice = new Invoice
+        {
+            Id = Guid.NewGuid(),
+            InvoiceNumber = "INV-EMAIL-TEST",
+            CustomerId = order.CustomerId,
+            Customer = order.Customer,
+            OrderId = order.Id,
+            Order = order,
+            IssueDate = DateTimeOffset.UtcNow,
+            DueDate = DateTimeOffset.UtcNow.AddDays(14),
+            Subtotal = order.Subtotal,
+            GstAmount = order.GstAmount,
+            TotalAmount = order.TotalAmount,
+            OutstandingAmount = order.TotalAmount,
+            Status = InvoiceStatus.Draft,
+            EmailStatus = EmailStatus.NotSent
+        };
+        foreach (var item in order.Items)
+        {
+            invoice.Items.Add(new InvoiceItem
+            {
+                Id = Guid.NewGuid(),
+                Description = item.ProductNameSnapshot,
+                Quantity = item.Quantity,
+                UnitPrice = item.UnitPriceSnapshot,
+                LineTotal = item.LineTotal
+            });
+        }
+
+        order.OrderStatus = OrderStatus.Shipped;
+        order.ShipmentStatus = ShipmentStatus.Shipped;
+        order.InvoiceStatus = InvoiceStatus.Draft;
+        order.Invoice = invoice;
+        db.Invoices.Add(invoice);
+        await db.SaveChangesAsync();
+        var service = services.GetRequiredService<IBillingService>();
+
+        var result = await service.SendInvoiceEmail(invoice.Id, CancellationToken.None);
+
+        Assert.Equal(InvoiceStatus.Unpaid, result.Status);
+        Assert.Equal(EmailStatus.Sent, result.EmailStatus);
+        Assert.NotNull((await db.Invoices.FindAsync(invoice.Id))!.PdfFileKey);
+        var outbox = await db.OutboxMessages.OrderByDescending(message => message.CreatedAt).FirstAsync();
+        using var payload = JsonDocument.Parse(outbox.Payload);
+        Assert.True(payload.RootElement.TryGetProperty("attachments", out var attachments));
+        Assert.True(attachments.GetArrayLength() > 0);
     }
 
     private static async Task<IServiceProvider> CreateServices()
@@ -170,6 +273,8 @@ public sealed class BillingServiceTests
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddScoped<IEmailSender, EmailSenderStub>();
         services.AddScoped<IOutboxPublisher, OutboxPublisher>();
+        services.AddScoped<IPdfGenerator, QuestPdfGenerator>();
+        services.AddSingleton<IDocumentStorageService, TestDocumentStorageService>();
         services.AddScoped<IBillingRepository, EfBillingRepository>();
         services.AddScoped<IBillingService, BillingUseCase>();
         var provider = services.BuildServiceProvider();

@@ -8,7 +8,7 @@ public sealed class AuthenticationUseCase(
 {
     public async Task<LoginResponse> Login(LoginRequest request, CancellationToken cancellationToken)
     {
-        var user = await users.FindActiveByEmailWithCustomer(request.Email, cancellationToken);
+        var user = await users.FindActiveByEmailWithCustomer(NormalizeEmail(request.Email), cancellationToken);
         if (user is null || !passwordHasher.Verify(request.Password, user.PasswordHash))
         {
             throw new ApiException(401, "UNAUTHORIZED", "Invalid email or password.");
@@ -19,13 +19,23 @@ public sealed class AuthenticationUseCase(
             throw new ApiException(403, "customer_account_inactive", "Customer account is not active.");
         }
 
+        if (user.Role == UserRole.Customer && user.Customer?.AccountStatus == AccountStatus.Invited)
+        {
+            user.Customer.AccountStatus = AccountStatus.Active;
+            users.AddAudit(
+                "ActivatedCustomerOnLogin",
+                "Customer",
+                user.Customer.Id,
+                $"Activated customer {user.Customer.BusinessName} on first portal login",
+                user.Id,
+                user.Role.ToString());
+        }
+
         user.LastLoginAt = clock.UtcNow;
         user.UpdatedAt = clock.UtcNow;
         await users.SaveChanges(cancellationToken);
 
-        var token = tokenService.Create(user);
-        var profile = new UserProfileDto(user.Id, user.Email, user.Role, user.CustomerId, user.DisplayName);
-        return new LoginResponse(token.Token, token.ExpiresIn, user.Role, profile);
+        return CreateLoginResponse(user);
     }
 
     public async Task ChangeCustomerPassword(Guid userId, ChangePasswordRequest request, CancellationToken cancellationToken)
@@ -52,5 +62,17 @@ public sealed class AuthenticationUseCase(
         user.UpdatedAt = clock.UtcNow;
         users.AddAudit("ChangedPassword", "User", user.Id, $"Changed password for {user.Email}", user.Id, user.Role.ToString());
         await users.SaveChanges(cancellationToken);
+    }
+
+    private LoginResponse CreateLoginResponse(User user)
+    {
+        var token = tokenService.Create(user);
+        var profile = new UserProfileDto(user.Id, user.Email, user.Role, user.CustomerId, user.DisplayName);
+        return new LoginResponse(token.Token, token.ExpiresIn, user.Role, profile);
+    }
+
+    private static string NormalizeEmail(string? email)
+    {
+        return (email ?? "").Trim().ToLowerInvariant();
     }
 }

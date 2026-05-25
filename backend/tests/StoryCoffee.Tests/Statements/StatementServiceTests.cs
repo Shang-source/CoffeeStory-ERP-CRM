@@ -25,7 +25,7 @@ public sealed class StatementServiceTests
     }
 
     [Fact]
-    public async Task StatementSnapshot_DoesNotChangeAfterPayment()
+    public async Task EditableStatementSnapshot_RecalculatesAfterPayment()
     {
         var services = await CreateServices();
         var statementService = services.GetRequiredService<IStatementService>();
@@ -33,7 +33,6 @@ public sealed class StatementServiceTests
         var db = services.GetRequiredService<AppDbContext>();
 
         var statement = (await statementService.GenerateWeeklyStatements(CancellationToken.None)).First();
-        var snapshotTotal = statement.TotalOutstanding;
         var invoice = await db.Invoices.FirstAsync(x => x.Id == statement.Invoices[0].Id);
         var admin = await db.Users.FirstAsync(x => x.Role == UserRole.Admin);
 
@@ -45,8 +44,35 @@ public sealed class StatementServiceTests
             null), CancellationToken.None);
 
         var storedStatement = await statementService.GetAdminStatement(statement.Id, CancellationToken.None);
-        Assert.Equal(snapshotTotal, storedStatement.TotalOutstanding);
-        Assert.Equal(statement.Invoices[0].OutstandingAmount, storedStatement.Invoices[0].OutstandingAmount);
+        var storedLine = storedStatement.Invoices.Single(x => x.Id == invoice.Id);
+        Assert.Equal(0, storedLine.OutstandingAmount);
+        Assert.Equal(InvoiceStatus.Paid, storedLine.Status);
+        Assert.True(storedStatement.TotalOutstanding < statement.TotalOutstanding);
+    }
+
+    [Fact]
+    public async Task SentStatementSnapshot_DoesNotChangeAfterPayment()
+    {
+        var services = await CreateServices();
+        var statementService = services.GetRequiredService<IStatementService>();
+        var billingService = services.GetRequiredService<IBillingService>();
+        var db = services.GetRequiredService<AppDbContext>();
+
+        var statement = (await statementService.GenerateWeeklyStatements(CancellationToken.None)).First();
+        var sentStatement = await statementService.SendStatementEmail(statement.Id, CancellationToken.None);
+        var invoice = await db.Invoices.FirstAsync(x => x.Id == sentStatement.Invoices[0].Id);
+        var admin = await db.Users.FirstAsync(x => x.Role == UserRole.Admin);
+
+        await billingService.RecordPayment(invoice.Id, admin.Id, new(
+            invoice.OutstandingAmount,
+            DateTimeOffset.UtcNow,
+            "BankTransfer",
+            "SENT-SNAPSHOT-TEST",
+            null), CancellationToken.None);
+
+        var storedStatement = await statementService.GetAdminStatement(statement.Id, CancellationToken.None);
+        Assert.Equal(sentStatement.TotalOutstanding, storedStatement.TotalOutstanding);
+        Assert.Equal(sentStatement.Invoices[0].OutstandingAmount, storedStatement.Invoices[0].OutstandingAmount);
     }
 
     [Fact]
@@ -103,6 +129,8 @@ public sealed class StatementServiceTests
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddScoped<IEmailSender, EmailSenderStub>();
         services.AddScoped<IOutboxPublisher, OutboxPublisher>();
+        services.AddScoped<IPdfGenerator, QuestPdfGenerator>();
+        services.AddSingleton<IDocumentStorageService, TestDocumentStorageService>();
         services.AddScoped<IBillingRepository, EfBillingRepository>();
         services.AddScoped<IBillingService, BillingUseCase>();
         services.AddScoped<IStatementRepository, EfStatementRepository>();

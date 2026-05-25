@@ -24,6 +24,11 @@ public sealed class ApiExceptionMiddleware(RequestDelegate next, ILogger<ApiExce
         {
             await WriteError(context, StatusCodes.Status400BadRequest, "INVALID_REQUEST", exception.Message);
         }
+        catch (PersistenceConcurrencyException exception)
+        {
+            logger.LogWarning(exception, "Persistence concurrency conflict");
+            await WriteError(context, StatusCodes.Status409Conflict, "persistence_concurrency_conflict", "The data changed while processing this request. Please refresh and retry.");
+        }
         catch (Exception exception)
         {
             logger.LogError(exception, "Unhandled API exception");

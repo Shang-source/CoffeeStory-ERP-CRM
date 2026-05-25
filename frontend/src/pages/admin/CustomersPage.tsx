@@ -8,6 +8,8 @@ import { type CustomerPayload } from '@/entities/customer/api/customerApi';
 import { useAdminCustomersQuery } from '@/entities/customer/api/customerQueries';
 import { useCreateAdminCustomerMutation } from '@/features/customerCreate/model/customerCreateMutations';
 import { useSendAdminCustomerInviteMutation } from '@/features/customerInvite/model/customerInviteMutations';
+import { formatAccountStatus, getAccountStatusColor } from '@/shared/status/statusFormat';
+import { StatusChip } from '@/shared/ui/StatusChip';
 
 export default function Customers() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -22,6 +24,12 @@ export default function Customers() {
   const handleSendInvite = (customer: Customer) => {
     sendInviteMutation.mutate(customer.id);
   };
+
+  const canSendInvite = (customer: Customer) =>
+    !customer.hasPortalUser &&
+    customer.accountStatus !== 'Suspended' &&
+    customer.accountStatus !== 'Archived' &&
+    customer.phone.trim().length > 0;
 
   if (isLoading) {
     return (
@@ -61,6 +69,7 @@ export default function Customers() {
                   <TableCell>Phone</TableCell>
                   <TableCell>Payment Terms</TableCell>
                   <TableCell>Status</TableCell>
+                  <TableCell>Portal User</TableCell>
                   <TableCell align="center">Actions</TableCell>
                 </TableRow>
               </TableHead>
@@ -73,18 +82,17 @@ export default function Customers() {
                     <TableCell>{customer.phone}</TableCell>
                     <TableCell>{customer.paymentTerms}</TableCell>
                     <TableCell>
-                      <Chip label={customer.accountStatus} color={customer.accountStatus === 'Active' ? 'success' : 'default'} size="small" />
+                      <StatusChip label={formatAccountStatus(customer.accountStatus)} color={getAccountStatusColor(customer.accountStatus)} />
+                    </TableCell>
+                    <TableCell>
+                      <Chip label={customer.hasPortalUser ? 'Created' : 'Not invited'} color={customer.hasPortalUser ? 'success' : 'default'} size="small" />
                     </TableCell>
                     <TableCell align="center">
                       <IconButton
                         size="small"
                         onClick={() => handleSendInvite(customer)}
-                        disabled={
-                          customer.accountStatus === 'Suspended' ||
-                          customer.accountStatus === 'Archived' ||
-                          sendInviteMutation.isPending
-                        }
-                        title="Send invite email"
+                        disabled={!canSendInvite(customer) || sendInviteMutation.isPending}
+                        title={customer.hasPortalUser ? 'Portal user already exists' : 'Create portal user and send invite email'}
                       >
                         <Send />
                       </IconButton>

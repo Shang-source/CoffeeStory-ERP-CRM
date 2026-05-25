@@ -16,6 +16,34 @@ public sealed class BatchToProductionRequestValidator : AbstractValidator<BatchT
     }
 }
 
+public sealed class BatchShipAndInvoiceRequestValidator : AbstractValidator<BatchShipAndInvoiceRequest>
+{
+    public BatchShipAndInvoiceRequestValidator()
+    {
+        RuleFor(request => request.OrderIds)
+            .NotEmpty()
+            .WithMessage("At least one order is required.");
+        RuleForEach(request => request.OrderIds)
+            .NotEmpty()
+            .WithMessage("Order id is required.");
+    }
+}
+
+public sealed class LoginRequestValidator : AbstractValidator<LoginRequest>
+{
+    public LoginRequestValidator()
+    {
+        RuleFor(request => request.Email)
+            .NotEmpty()
+            .WithMessage("Email is required.")
+            .EmailAddress()
+            .WithMessage("Email must be valid.");
+        RuleFor(request => request.Password)
+            .NotEmpty()
+            .WithMessage("Password is required.");
+    }
+}
+
 public sealed class UpdateProductionItemRequestValidator : AbstractValidator<UpdateProductionItemRequest>
 {
     public UpdateProductionItemRequestValidator()

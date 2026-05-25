@@ -14,7 +14,7 @@ export function useSendAdminCustomerInviteMutation() {
         currentCustomers.map((item) => item.id === updatedCustomer.id ? updatedCustomer : item)
       );
       queryClient.setQueryData<Customer>(queryKeys.adminCustomer(updatedCustomer.id), updatedCustomer);
-      toast.success(`Invite sent to ${updatedCustomer.email}`);
+      toast.success(`Portal account created and invite sent to ${updatedCustomer.email}`);
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to send invite'),
   });

@@ -16,7 +16,9 @@ public static class InfrastructureServiceCollectionExtensions
 
         services.AddDbContext<AppDbContext>(options =>
         {
-            options.UseNpgsql(configuration.GetConnectionString("DefaultConnection"));
+            options.UseNpgsql(
+                configuration.GetConnectionString("DefaultConnection"),
+                postgres => postgres.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery));
         });
 
         services.AddStoryCoffeeQuartz(configuration);
@@ -63,6 +65,10 @@ public static class InfrastructureServiceCollectionExtensions
             .Validate(options => !IsSmtpEmailProvider(options.Provider) || !string.IsNullOrWhiteSpace(options.SmtpHost), "Email:SmtpHost is required when SMTP is enabled.")
             .Validate(options => options.SmtpPort > 0, "Email:SmtpPort must be greater than zero.")
             .Validate(options => !IsSesEmailProvider(options.Provider) || !string.IsNullOrWhiteSpace(options.SesRegion), "Email:SesRegion is required when SES is enabled.")
+            .ValidateOnStart();
+        services.AddOptions<PortalOptions>()
+            .Bind(configuration.GetSection("Portal"))
+            .Validate(options => Uri.TryCreate(options.BaseUrl, UriKind.Absolute, out _), "Portal:BaseUrl must be an absolute URL.")
             .ValidateOnStart();
         services.AddOptions<OutboxOptions>()
             .Bind(configuration.GetSection("Outbox"))
@@ -121,6 +127,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddSingleton<IClock, SystemClock>();
         services.AddScoped<IPasswordHasher, PasswordHasher>();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
+        services.AddSingleton<IPortalLinkProvider, PortalLinkProvider>();
         services.AddScoped<ILogReadService, LogReadService>();
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IOutboxPublisher, OutboxPublisher>();
@@ -159,6 +166,7 @@ public static class InfrastructureServiceCollectionExtensions
             return ActivatorUtilities.CreateInstance<EmailSenderStub>(provider);
         });
         services.AddScoped<IPdfGenerator, QuestPdfGenerator>();
+        services.AddScoped<DocumentDownloadLinks>();
         services.AddScoped<IDocumentStorageService>(provider =>
         {
             var storageOptions = provider.GetRequiredService<IOptions<DocumentStorageOptions>>().Value;

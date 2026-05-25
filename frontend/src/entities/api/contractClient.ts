@@ -1,7 +1,7 @@
-import { AccountStatus, AdminDashboard, AuditLog, Customer, CustomerDashboard, CustomerPriceBook, CustomerPriceBookItem, CustomerProduct, EmailLog, EmailStatus, Invoice, Order, OrderFrequency, PagedResult, PaymentRecord, Product, ProductionBatch, ProductionItem, StandingOrder, StandingOrderStatus, Statement, UserRole } from '@/entities/types';
+import { AccountStatus, AdminDashboard, AuditLog, BatchShipAndInvoiceResponse, Customer, CustomerDashboard, CustomerPriceBook, CustomerPriceBookItem, CustomerProduct, EmailLog, EmailStatus, Invoice, Order, OrderFrequency, OrderQueryParams, PagedResult, PaymentRecord, Product, ProductionBatch, ProductionItem, StandingOrder, StandingOrderStatus, Statement, UserRole } from '@/entities/types';
 import type { LoginResponse, UserProfile } from '@/entities/user/model/authTypes';
 import type { components } from '@/shared/api/generated/schema';
-import { apiDownloadBlob, apiRequest, apiRequestNoContent, downloadExternalBlob } from '@/shared/api/httpClient';
+import { apiDownloadBlob, apiRequest, apiRequestNoContent, downloadExternalBlob, request } from '@/shared/api/httpClient';
 import type { ApiQuery, ApiRequestBody, ApiResponse } from '@/shared/api/openapi';
 import { storeSession } from '@/shared/api/sessionStorage';
 
@@ -56,8 +56,8 @@ export async function login(email: string, password: string) {
   return response.userProfile;
 }
 
-export async function getAdminOrders() {
-  return parseOrders(await apiRequest('/api/admin/orders', 'get', '/api/admin/orders'));
+export async function getAdminOrders(params: OrderQueryParams = {}) {
+  return parseOrders(await apiRequest('/api/admin/orders', 'get', `/api/admin/orders${toQueryString(params)}`));
 }
 
 export async function getCustomerOrders() {
@@ -272,6 +272,20 @@ export async function batchSendOrdersToProduction(orderIds: string[]) {
     body: JSON.stringify({ orderIds }),
   });
   return parseBatchToProductionResponse(response);
+}
+
+export async function batchShipAndInvoiceOrders(orderIds: string[]) {
+  const response = await request<BatchShipAndInvoiceResponse>('/api/admin/orders/batch-ship-and-invoice', {
+    method: 'POST',
+    body: JSON.stringify({ orderIds }),
+  });
+  return {
+    updated: response.updated,
+    orders: parseOrders(response.orders),
+    invoiceEmailsSent: response.invoiceEmailsSent,
+    statementEmailsSent: response.statementEmailsSent,
+    emailFailures: response.emailFailures ?? [],
+  } satisfies BatchShipAndInvoiceResponse;
 }
 
 export async function markOrderReadyToShip(orderId: string) {
@@ -568,6 +582,7 @@ function parseCustomer(customer: ApiCustomer | Customer): Customer {
     deliveryAddress: required(customer.deliveryAddress, 'customer.deliveryAddress'),
     paymentTerms: required(customer.paymentTerms, 'customer.paymentTerms'),
     accountStatus: required(customer.accountStatus, 'customer.accountStatus'),
+    hasPortalUser: required(customer.hasPortalUser, 'customer.hasPortalUser'),
     createdAt: parseDate(customer.createdAt, 'customer.createdAt'),
   };
 }

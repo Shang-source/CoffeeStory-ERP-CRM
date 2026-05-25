@@ -10,6 +10,7 @@ export const queryKeys = {
   adminStandingOrders: ['admin', 'standingOrders'] as const,
   customerStandingOrder: ['customer', 'standingOrder'] as const,
   adminOrders: ['admin', 'orders'] as const,
+  adminOrdersList: (params: unknown) => ['admin', 'orders', params] as const,
   customerOrders: ['customer', 'orders'] as const,
   adminInvoices: ['admin', 'invoices'] as const,
   adminInvoice: (invoiceId: string) => ['admin', 'invoices', invoiceId] as const,

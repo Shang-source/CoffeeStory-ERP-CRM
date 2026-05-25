@@ -7,9 +7,52 @@ namespace StoryCoffee.Infrastructure.Orders;
 
 public sealed class EfOrderWorkflowRepository(AppDbContext db, IClock clock) : IOrderWorkflowRepository
 {
-    public async Task<IReadOnlyList<Order>> GetAdminOrders(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<Order>> GetAdminOrders(OrderQueryRequest query, CancellationToken cancellationToken)
     {
-        return await BaseQuery()
+        var orders = BaseQuery();
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var search = query.Search.Trim().ToLowerInvariant();
+            orders = orders.Where(order =>
+                order.OrderNumber.ToLower().Contains(search) ||
+                order.Customer.BusinessName.ToLower().Contains(search) ||
+                order.Customer.ContactPerson.ToLower().Contains(search) ||
+                order.Items.Any(item =>
+                    item.ProductNameSnapshot.ToLower().Contains(search) ||
+                    item.SkuSnapshot.ToLower().Contains(search)));
+        }
+
+        if (query.OrderStatus.HasValue)
+        {
+            orders = orders.Where(order => order.OrderStatus == query.OrderStatus.Value);
+        }
+
+        if (query.InvoiceStatus.HasValue)
+        {
+            orders = orders.Where(order => order.InvoiceStatus == query.InvoiceStatus.Value);
+        }
+
+        if (query.ShipmentStatus.HasValue)
+        {
+            orders = orders.Where(order => order.ShipmentStatus == query.ShipmentStatus.Value);
+        }
+
+        if (query.CustomerId.HasValue)
+        {
+            orders = orders.Where(order => order.CustomerId == query.CustomerId.Value);
+        }
+
+        if (query.From.HasValue)
+        {
+            orders = orders.Where(order => order.GeneratedAt >= query.From.Value);
+        }
+
+        if (query.To.HasValue)
+        {
+            orders = orders.Where(order => order.GeneratedAt <= query.To.Value);
+        }
+
+        return await orders
             .OrderByDescending(order => order.GeneratedAt)
             .ToListAsync(cancellationToken);
     }
@@ -38,7 +81,7 @@ public sealed class EfOrderWorkflowRepository(AppDbContext db, IClock clock) : I
     {
         return db.ProductionBatches
             .Include(batch => batch.Items)
-            .Where(batch => batch.Status == ProductionBatchStatus.Open || batch.Status == ProductionBatchStatus.InProgress)
+            .Where(batch => batch.Status == ProductionBatchStatus.Open)
             .OrderByDescending(batch => batch.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);
     }
@@ -51,6 +94,11 @@ public sealed class EfOrderWorkflowRepository(AppDbContext db, IClock clock) : I
     public void AddProductionBatch(ProductionBatch productionBatch)
     {
         db.ProductionBatches.Add(productionBatch);
+    }
+
+    public void AddProductionItem(ProductionItem productionItem)
+    {
+        db.ProductionItems.Add(productionItem);
     }
 
     public void AddInvoice(Invoice invoice)

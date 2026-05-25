@@ -1,17 +1,17 @@
 import { useParams, useNavigate } from 'react-router';
 import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Divider, Chip, CircularProgress, Alert } from '@mui/material';
 import { Send, Download, ArrowBack } from '@mui/icons-material';
-import { formatInvoiceStatus, getInvoiceStatusColor } from '@/shared/status/statusFormat';
-import { toast } from 'sonner';
+import { formatEmailStatus, formatInvoiceStatus, formatStatementStatus, getEmailStatusColor, getInvoiceStatusColor, getStatementStatusColor } from '@/shared/status/statusFormat';
 import { useAdminStatementQuery } from '@/entities/statement/api/statementQueries';
-import { downloadAdminStatementPdf } from '@/features/statementActions/api/statementActionsApi';
-import { useSendStatementEmailMutation } from '@/features/statementActions/model/statementActionsMutations';
+import { useDownloadStatementPdfMutation, useSendStatementEmailMutation } from '@/features/statementActions/model/statementActionsMutations';
+import { StatusChip } from '@/shared/ui/StatusChip';
 
 export default function StatementDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { data: statement, isLoading, error } = useAdminStatementQuery(id);
   const sendStatementMutation = useSendStatementEmailMutation();
+  const downloadStatementMutation = useDownloadStatementPdfMutation('admin');
 
   const handleSendStatement = async () => {
     if (!statement) {
@@ -30,12 +30,10 @@ export default function StatementDetail() {
       return;
     }
 
-    try {
-      await downloadAdminStatementPdf(statement.id);
-      toast.success('Downloading statement PDF');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to download statement');
-    }
+    downloadStatementMutation.mutate({
+      statementId: statement.id,
+      statementNumber: statement.statementNumber,
+    });
   };
 
   if (isLoading) {
@@ -81,18 +79,10 @@ export default function StatementDetail() {
               )}
             </Box>
             <Box>
-              <Chip
-                label={statement.status}
-                size="medium"
-                color={statement.status === 'Sent' ? 'success' : 'default'}
-                sx={{ mr: 1, mb: 1 }}
-              />
-              <Chip
-                label={`Email: ${statement.emailStatus}`}
-                size="medium"
-                color={statement.emailStatus === 'Sent' ? 'success' : 'default'}
-                sx={{ mb: 1 }}
-              />
+              <StatusChip label={formatStatementStatus(statement.status)} color={getStatementStatusColor(statement.status)} />
+              <Box component="span" sx={{ ml: 1 }}>
+                <StatusChip label={`Email: ${formatEmailStatus(statement.emailStatus)}`} color={getEmailStatusColor(statement.emailStatus)} />
+              </Box>
             </Box>
           </Box>
 
@@ -105,7 +95,7 @@ export default function StatementDetail() {
             >
               Send Email
             </Button>
-            <Button variant="outlined" startIcon={<Download />} onClick={handleDownload}>
+            <Button variant="outlined" startIcon={<Download />} onClick={handleDownload} disabled={downloadStatementMutation.isPending}>
               Download PDF
             </Button>
           </Box>

@@ -7,10 +7,10 @@ namespace StoryCoffee.Api.Controllers;
 public sealed class OrdersController(IOrderWorkflowService orders) : StoryCoffeeController
 {
     [HttpGet("api/admin/orders")]
-    public async Task<IReadOnlyList<OrderDto>> GetAdminOrders(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<OrderDto>> GetAdminOrders([FromQuery] OrderQueryRequest query, CancellationToken cancellationToken)
     {
         RequireRole(UserRole.Admin);
-        return await orders.GetAdminOrders(cancellationToken);
+        return await orders.GetAdminOrders(query, cancellationToken);
     }
 
     [HttpPost("api/admin/orders/{id:guid}/send-to-production")]
@@ -25,6 +25,13 @@ public sealed class OrdersController(IOrderWorkflowService orders) : StoryCoffee
     {
         RequireRole(UserRole.Admin);
         return await orders.BatchToProduction(request.OrderIds, CurrentUserId(), cancellationToken);
+    }
+
+    [HttpPost("api/admin/orders/batch-ship-and-invoice")]
+    public async Task<BatchShipAndInvoiceResponse> BatchShipAndInvoice(BatchShipAndInvoiceRequest request, CancellationToken cancellationToken)
+    {
+        RequireRole(UserRole.Admin);
+        return await orders.BatchShipAndInvoice(request.OrderIds, CurrentUserId(), cancellationToken);
     }
 
     [HttpPost("api/admin/orders/{id:guid}/mark-ready-to-ship")]

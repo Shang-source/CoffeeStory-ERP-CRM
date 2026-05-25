@@ -33,6 +33,11 @@ public sealed class EfProductionRepository(AppDbContext db) : IProductionReposit
         db.ProductionBatches.Add(productionBatch);
     }
 
+    public void AddProductionItem(ProductionItem productionItem)
+    {
+        db.ProductionItems.Add(productionItem);
+    }
+
     public Task<ProductionItem?> GetProductionItem(Guid productionItemId, CancellationToken cancellationToken)
     {
         return db.ProductionItems

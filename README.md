@@ -108,6 +108,8 @@ Demo data is controlled by `SeedData` options. Production defaults do not seed t
 
 `Email:Provider=Stub` is safe for local no-op sending, `Email:Provider=Smtp` sends to MailHog or SMTP, and `Email:Provider=SES` sends through AWS SES v2. SES uses `Email:SesRegion`, optional `Email:SesEndpointUrl`, optional `Email:SesConfigurationSet`, and AWS SDK default credentials such as IAM role, web identity, profile, or environment credentials. SES/SNS delivery notifications post to `POST /api/webhooks/ses`; production defaults verify SNS signatures, optionally restrict `Email:SnsTopicArn`, and can auto-confirm subscriptions with `Email:AutoConfirmSnsSubscriptions=true`.
 
+When running Docker Compose locally, invite, invoice, and statement emails are captured by MailHog instead of real inboxes. Open `http://localhost:8025` to verify recipients, subjects, and email bodies after triggering the corresponding admin action.
+
 ## Validation
 
 ```bash

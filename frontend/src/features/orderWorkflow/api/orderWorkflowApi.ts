@@ -5,4 +5,5 @@ export {
   markOrderShipped,
   sendInvoice,
   sendOrderToProduction,
+  batchShipAndInvoiceOrders,
 } from '@/entities/api/contractClient';

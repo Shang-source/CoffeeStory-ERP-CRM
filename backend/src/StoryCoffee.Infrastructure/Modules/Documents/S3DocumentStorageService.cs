@@ -3,6 +3,7 @@ using Amazon.Runtime;
 using Amazon.S3;
 using Amazon.S3.Model;
 using Microsoft.Extensions.Options;
+using System.Net;
 using StoryCoffee.Contracts;
 using StoryCoffee.Infrastructure.Options;
 
@@ -11,11 +12,13 @@ namespace StoryCoffee.Infrastructure.Documents;
 public sealed class S3DocumentStorageService : IDocumentStorageService, IDisposable
 {
     private readonly DocumentStorageOptions options;
+    private readonly DocumentDownloadLinks downloadLinks;
     private readonly IAmazonS3 s3;
 
-    public S3DocumentStorageService(IOptions<DocumentStorageOptions> options)
+    public S3DocumentStorageService(IOptions<DocumentStorageOptions> options, DocumentDownloadLinks downloadLinks)
     {
         this.options = options.Value;
+        this.downloadLinks = downloadLinks;
         var config = new AmazonS3Config
         {
             RegionEndpoint = RegionEndpoint.GetBySystemName(this.options.S3Region),
@@ -45,7 +48,7 @@ public sealed class S3DocumentStorageService : IDocumentStorageService, IDisposa
         await s3.PutObjectAsync(new PutObjectRequest
         {
             BucketName = options.BucketName,
-            Key = NormalizeKey(fileKey),
+            Key = DocumentDownloadLinks.NormalizeKey(fileKey),
             InputStream = stream,
             ContentType = contentType
         }, cancellationToken);
@@ -53,20 +56,31 @@ public sealed class S3DocumentStorageService : IDocumentStorageService, IDisposa
 
     public PdfDownloadDto CreateDownloadDto(PdfDocumentResult pdf)
     {
-        var request = new GetPreSignedUrlRequest
-        {
-            BucketName = options.BucketName,
-            Key = NormalizeKey(pdf.FileKey),
-            Expires = DateTime.UtcNow.AddMinutes(options.PresignedUrlMinutes),
-            Verb = HttpVerb.GET
-        };
-        return new PdfDownloadDto(s3.GetPreSignedURL(request), pdf.FileName, pdf.FileKey, pdf.GeneratedAt);
+        return downloadLinks.CreateDownloadDto(pdf);
     }
 
     public async Task<StoredDocument?> Get(string fileKey, string signature, long expires, CancellationToken cancellationToken)
     {
-        await Task.CompletedTask;
-        return null;
+        if (!downloadLinks.TryValidate(fileKey, signature, expires, out var normalizedKey))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var response = await s3.GetObjectAsync(options.BucketName, normalizedKey, cancellationToken);
+            await using var responseStream = response.ResponseStream;
+            using var memoryStream = new MemoryStream();
+            await responseStream.CopyToAsync(memoryStream, cancellationToken);
+            return new StoredDocument(
+                memoryStream.ToArray(),
+                response.Headers.ContentType ?? "application/octet-stream",
+                Path.GetFileName(normalizedKey));
+        }
+        catch (AmazonS3Exception ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
     }
 
     public void Dispose()
@@ -90,8 +104,4 @@ public sealed class S3DocumentStorageService : IDocumentStorageService, IDisposa
         }
     }
 
-    private static string NormalizeKey(string fileKey)
-    {
-        return fileKey.Replace('\\', '/').TrimStart('/');
-    }
 }

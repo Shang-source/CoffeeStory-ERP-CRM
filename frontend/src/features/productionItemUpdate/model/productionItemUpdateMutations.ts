@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ProductionItem } from '@/entities/types';
 import { queryKeys } from '@/shared/api/queryKeys';
+import { invalidateProductionState } from '@/shared/api/invalidateBusinessState';
 import { completeProduction, startProduction, updateProducedQuantity } from '@/features/productionItemUpdate/api/productionItemUpdateApi';
 
 interface UpdateProducedQuantityInput {
@@ -18,8 +19,9 @@ export function useStartProductionMutation() {
 
   return useMutation({
     mutationFn: (productId: string) => startProduction(productId),
-    onSuccess: (updated) => {
+    onSuccess: async (updated) => {
       queryClient.setQueryData<ProductionItem[]>(queryKeys.production, (items = []) => replaceProductionItem(items, updated));
+      await invalidateProductionState(queryClient);
       toast.success(`Started production for ${updated.productName}`);
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to start production'),
@@ -36,7 +38,7 @@ export function useUpdateProducedQuantityMutation(onUpdated?: () => void) {
       queryClient.setQueryData<ProductionItem[]>(queryKeys.production, (items = []) => replaceProductionItem(items, updated));
       toast.success(`Updated produced quantity for ${updated.productName}`);
       onUpdated?.();
-      await queryClient.invalidateQueries({ queryKey: queryKeys.production });
+      await invalidateProductionState(queryClient);
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to update produced quantity'),
   });
@@ -50,8 +52,7 @@ export function useCompleteProductionMutation() {
     onSuccess: async (updated) => {
       queryClient.setQueryData<ProductionItem[]>(queryKeys.production, (items = []) => replaceProductionItem(items, updated));
       toast.success(`${updated.productName} marked as completed`);
-      await queryClient.invalidateQueries({ queryKey: queryKeys.production });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.adminOrders });
+      await invalidateProductionState(queryClient);
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to complete production item'),
   });

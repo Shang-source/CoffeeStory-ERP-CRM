@@ -1,199 +1,136 @@
-import { useState } from 'react';
-import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, Button, IconButton, Collapse, Menu, MenuItem, Alert, CircularProgress } from '@mui/material';
-import { KeyboardArrowDown, KeyboardArrowUp, MoreVert, PlayArrow } from '@mui/icons-material';
-import { formatOrderStatus, formatInvoiceStatus, formatShipmentStatus, getOrderStatusColor, getInvoiceStatusColor, getShipmentStatusColor } from '@/shared/status/statusFormat';
+import { useMemo, useState } from 'react';
+import { Alert, Box, Button, Card, CardContent, Checkbox, Chip, Collapse, IconButton, Menu, MenuItem, Stack, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs, TextField, Toolbar, Typography } from '@mui/material';
+import { KeyboardArrowDown, KeyboardArrowUp, MoreVert, PlayArrow, LocalShipping } from '@mui/icons-material';
+import { formatInvoiceStatus, getInvoiceStatusColor } from '@/shared/status/statusFormat';
 import { toast } from 'sonner';
-import { Order } from '@/entities/types';
+import { Order, OrderQueryParams } from '@/entities/types';
 import { useNavigate } from 'react-router';
 import ConfirmDialog from '@/shared/ui/ConfirmDialog/ConfirmDialog';
 import { useAdminOrdersQuery } from '@/entities/order/api/orderQueries';
 import { useBatchToProductionMutation } from '@/features/batchToProduction/model/batchToProductionMutations';
-import { cancelOrder, generateInvoice, markOrderReadyToShip, markOrderShipped, sendInvoice, sendOrderToProduction } from '@/features/orderWorkflow/api/orderWorkflowApi';
-import { useOrderWorkflowMutation } from '@/features/orderWorkflow/model/orderWorkflowMutations';
+import { cancelOrder } from '@/features/orderWorkflow/api/orderWorkflowApi';
+import { useBatchShipAndInvoiceMutation, useOrderWorkflowMutation } from '@/features/orderWorkflow/model/orderWorkflowMutations';
+import { LoadingState } from '@/shared/ui/LoadingState';
+import { ErrorState } from '@/shared/ui/ErrorState';
+
+type OrderTab = 'all' | 'needProduction' | 'inProduction' | 'readyToShip' | 'awaitingPayment' | 'completed';
+
+const isAwaitingPayment = (order: Order) => ['Unpaid', 'PartiallyPaid', 'Overdue'].includes(order.invoiceStatus);
+const isCompleted = (order: Order) => order.orderStatus === 'Completed' || order.invoiceStatus === 'Paid';
+
+const orderTabs: Array<{ value: OrderTab; label: string; predicate: (order: Order) => boolean }> = [
+  { value: 'all', label: 'All', predicate: () => true },
+  { value: 'needProduction', label: 'Need Production', predicate: (order) => order.orderStatus === 'Generated' },
+  { value: 'inProduction', label: 'In Production', predicate: (order) => order.orderStatus === 'InProduction' },
+  { value: 'readyToShip', label: 'Ready to Ship', predicate: (order) => order.orderStatus === 'ReadyToShip' },
+  { value: 'awaitingPayment', label: 'Awaiting Payment', predicate: isAwaitingPayment },
+  { value: 'completed', label: 'Completed', predicate: isCompleted },
+];
+
+const workflowStage = (order: Order): { label: string; color: string } => {
+  if (order.orderStatus === 'Cancelled') {
+    return { label: 'Cancelled', color: '#757575' };
+  }
+  if (isCompleted(order)) {
+    return { label: 'Completed', color: '#009688' };
+  }
+  if (isAwaitingPayment(order)) {
+    return { label: 'Awaiting Payment', color: '#673AB7' };
+  }
+  if (order.orderStatus === 'ReadyToShip') {
+    return { label: 'Ready to Ship', color: '#2196F3' };
+  }
+  if (order.orderStatus === 'InProduction') {
+    return { label: 'In Production', color: '#FF9800' };
+  }
+  if (order.orderStatus === 'Shipped') {
+    return { label: 'Shipped', color: '#4CAF50' };
+  }
+  return { label: 'Need Production', color: '#9E9E9E' };
+};
 
 interface OrderRowProps {
   order: Order;
+  selected: boolean;
+  onSelect: (orderId: string, checked: boolean) => void;
   onOrderAction: (action: () => Promise<Order>, successMessage: string) => Promise<void>;
 }
 
-function OrderRow({ order, onOrderAction }: OrderRowProps) {
+function OrderRow({ order, selected, onSelect, onOrderAction }: OrderRowProps) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const [isCancelConfirmOpen, setIsCancelConfirmOpen] = useState(false);
 
-  const handleMenuClick = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchorEl(event.currentTarget);
-  };
-
-  const handleMenuClose = () => {
-    setAnchorEl(null);
-  };
-
-  const runAction = (action: () => Promise<Order>, successMessage: string) => {
-    handleMenuClose();
-    void onOrderAction(action, successMessage);
-  };
-
-  const confirmCancel = () => {
-    handleMenuClose();
-    setIsCancelConfirmOpen(true);
-  };
-
+  const handleMenuClose = () => setAnchorEl(null);
   const handleViewInvoice = () => {
     handleMenuClose();
     navigate('/admin/invoices');
-    toast.info('Navigating to invoices page');
   };
-
   const handleViewCustomer = () => {
     handleMenuClose();
     navigate(`/admin/customers/${order.customerId}`);
   };
-
   const handleViewProduction = () => {
     handleMenuClose();
     navigate('/admin/production');
-    toast.info('Navigating to production list');
   };
 
-  const getAvailableActions = () => {
-    const actions: { label: string; handler: () => void }[] = [];
-
-    actions.push({ label: 'View Customer', handler: handleViewCustomer });
-
-    if (order.orderStatus === 'Generated') {
-      actions.push({
-        label: 'Send to Production',
-        handler: () => runAction(() => sendOrderToProduction(order.id), 'Order sent to production'),
-      });
-      actions.push({ label: 'View Production List', handler: handleViewProduction });
-    }
-
-    if (order.orderStatus === 'InProduction') {
-      actions.push({ label: 'View Production List', handler: handleViewProduction });
-      actions.push({
-        label: 'Mark Ready to Ship',
-        handler: () => runAction(() => markOrderReadyToShip(order.id), 'Order marked ready to ship'),
-      });
-    }
-
-    if (order.orderStatus === 'ReadyToShip') {
-      actions.push({
-        label: 'Mark as Shipped',
-        handler: () => runAction(() => markOrderShipped(order.id), 'Order marked as shipped. Invoice created as draft.'),
-      });
-    }
-
-    if (order.invoiceStatus === 'NotIssued' && order.orderStatus === 'Shipped') {
-      actions.push({
-        label: 'Generate Invoice',
-        handler: () => runAction(() => generateInvoice(order.id), 'Invoice generated as draft'),
-      });
-    }
-
-    if (order.invoiceStatus === 'Draft') {
-      actions.push({
-        label: 'Send Invoice',
-        handler: () => runAction(() => sendInvoice(order.id), 'Invoice sent to customer'),
-      });
-      actions.push({ label: 'View Invoice', handler: handleViewInvoice });
-    }
-
-    if (order.invoiceStatus === 'Unpaid' || order.invoiceStatus === 'Overdue' || order.invoiceStatus === 'PartiallyPaid') {
-      actions.push({ label: 'View Invoice', handler: handleViewInvoice });
-      actions.push({ label: 'Record Payment', handler: () => { handleMenuClose(); navigate('/admin/payments'); } });
-    }
-
-    if (order.invoiceStatus === 'Paid') {
-      actions.push({ label: 'View Invoice', handler: handleViewInvoice });
-    }
-
-    if (order.orderStatus !== 'Cancelled' && order.orderStatus !== 'Completed' && order.orderStatus !== 'Shipped') {
-      actions.push({
-        label: 'Cancel Order',
-        handler: confirmCancel,
-      });
-    }
-
-    return actions;
-  };
-
-  const actions = getAvailableActions();
+  const actions: Array<{ label: string; handler: () => void }> = [
+    { label: 'View Customer', handler: handleViewCustomer },
+  ];
+  if (['Generated', 'InProduction', 'ReadyToShip'].includes(order.orderStatus)) {
+    actions.push({ label: 'View Production List', handler: handleViewProduction });
+  }
+  if (order.invoiceStatus !== 'NotIssued') {
+    actions.push({ label: 'View Invoice', handler: handleViewInvoice });
+  }
+  if (['Unpaid', 'PartiallyPaid', 'Overdue'].includes(order.invoiceStatus)) {
+    actions.push({ label: 'Record Payment', handler: () => { handleMenuClose(); navigate('/admin/payments'); } });
+  }
+  if (!['Cancelled', 'Completed', 'Shipped'].includes(order.orderStatus)) {
+    actions.push({ label: 'Cancel Order', handler: () => { handleMenuClose(); setIsCancelConfirmOpen(true); } });
+  }
 
   return (
     <>
-      <TableRow>
+      <TableRow selected={selected}>
+        <TableCell padding="checkbox">
+          <Checkbox checked={selected} onChange={(event) => onSelect(order.id, event.target.checked)} />
+        </TableCell>
         <TableCell>
           <IconButton size="small" onClick={() => setOpen(!open)}>
             {open ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
           </IconButton>
         </TableCell>
         <TableCell>
-          <Typography variant="body2" sx={{ fontWeight: 500 }}>
-            {order.orderNumber}
-          </Typography>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>{order.orderNumber}</Typography>
         </TableCell>
         <TableCell>
-          <Button
-            variant="text"
-            size="small"
-            onClick={(e) => {
-              e.stopPropagation();
-              navigate(`/admin/customers/${order.customerId}`);
-            }}
-            sx={{ textTransform: 'none', p: 0, minWidth: 'auto', '&:hover': { textDecoration: 'underline' } }}
-          >
+          <Button variant="text" size="small" onClick={handleViewCustomer} sx={{ textTransform: 'none', p: 0, minWidth: 'auto' }}>
             {order.customer?.businessName}
           </Button>
         </TableCell>
         <TableCell>{order.generatedAt.toLocaleDateString()}</TableCell>
         <TableCell align="right">${order.totalAmount.toFixed(2)}</TableCell>
+        <TableCell><Chip label={workflowStage(order).label} size="small" sx={{ bgcolor: workflowStage(order).color, color: 'white' }} /></TableCell>
+        <TableCell><Chip label={formatInvoiceStatus(order.invoiceStatus)} size="small" sx={{ bgcolor: getInvoiceStatusColor(order.invoiceStatus), color: 'white' }} /></TableCell>
         <TableCell>
-          <Chip
-            label={formatOrderStatus(order.orderStatus)}
-            size="small"
-            sx={{ bgcolor: getOrderStatusColor(order.orderStatus), color: 'white' }}
-          />
-        </TableCell>
-        <TableCell>
-          <Chip
-            label={formatInvoiceStatus(order.invoiceStatus)}
-            size="small"
-            sx={{ bgcolor: getInvoiceStatusColor(order.invoiceStatus), color: 'white' }}
-          />
-        </TableCell>
-        <TableCell>
-          <Chip
-            label={formatShipmentStatus(order.shipmentStatus)}
-            size="small"
-            sx={{ bgcolor: getShipmentStatusColor(order.shipmentStatus), color: 'white' }}
-          />
-        </TableCell>
-        <TableCell>
-          {actions.length > 0 && (
-            <>
-              <IconButton size="small" onClick={handleMenuClick}>
-                <MoreVert />
-              </IconButton>
-              <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
-                {actions.map((action) => (
-                  <MenuItem key={action.label} onClick={action.handler}>
-                    {action.label}
-                  </MenuItem>
-                ))}
-              </Menu>
-            </>
-          )}
+          <IconButton size="small" onClick={(event) => setAnchorEl(event.currentTarget)}>
+            <MoreVert />
+          </IconButton>
+          <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleMenuClose}>
+            {actions.map((action) => (
+              <MenuItem key={action.label} onClick={action.handler}>{action.label}</MenuItem>
+            ))}
+          </Menu>
         </TableCell>
       </TableRow>
       <TableRow>
         <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={9}>
           <Collapse in={open} timeout="auto" unmountOnExit>
-            <Box sx={{ margin: 2 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Order Items
-              </Typography>
+            <Box sx={{ m: 2 }}>
+              <Typography variant="subtitle2" gutterBottom>Order Items</Typography>
               <Table size="small">
                 <TableHead>
                   <TableRow>
@@ -238,9 +175,43 @@ function OrderRow({ order, onOrderAction }: OrderRowProps) {
 
 export default function Orders() {
   const navigate = useNavigate();
-  const { data: orders = [], isLoading, error } = useAdminOrdersQuery();
+  const [tab, setTab] = useState<OrderTab>('all');
+  const [filters, setFilters] = useState<OrderQueryParams>({});
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
+  const { data: orders = [], isLoading, error } = useAdminOrdersQuery(filters);
   const orderActionMutation = useOrderWorkflowMutation();
   const batchToProductionMutation = useBatchToProductionMutation(() => navigate('/admin/production'));
+  const batchShipAndInvoiceMutation = useBatchShipAndInvoiceMutation();
+
+  const currentTab = orderTabs.find((item) => item.value === tab) ?? orderTabs[0];
+  const visibleOrders = useMemo(() => orders.filter(currentTab.predicate), [orders, currentTab]);
+  const selectedOrders = orders.filter((order) => selectedOrderIds.has(order.id));
+  const selectedGeneratedOrders = selectedOrders.filter((order) => order.orderStatus === 'Generated');
+  const selectedReadyToShipOrders = selectedOrders.filter((order) => order.orderStatus === 'ReadyToShip');
+
+  const tabCounts = useMemo(() => Object.fromEntries(orderTabs.map((item) => [item.value, orders.filter(item.predicate).length])), [orders]);
+  const allVisibleSelected = visibleOrders.length > 0 && visibleOrders.every((order) => selectedOrderIds.has(order.id));
+  const someVisibleSelected = visibleOrders.some((order) => selectedOrderIds.has(order.id)) && !allVisibleSelected;
+
+  const handleSelect = (orderId: string, checked: boolean) => {
+    setSelectedOrderIds((current) => {
+      const next = new Set(current);
+      if (checked) {
+        next.add(orderId);
+      } else {
+        next.delete(orderId);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectVisible = (checked: boolean) => {
+    setSelectedOrderIds((current) => {
+      const next = new Set(current);
+      visibleOrders.forEach((order) => checked ? next.add(order.id) : next.delete(order.id));
+      return next;
+    });
+  };
 
   const handleOrderAction = async (action: () => Promise<Order>, successMessage: string) => {
     try {
@@ -251,120 +222,102 @@ export default function Orders() {
   };
 
   const handleBatchSendToProduction = async () => {
-    const generatedOrders = orders.filter(order => order.orderStatus === 'Generated');
-
-    if (generatedOrders.length === 0) {
-      toast.info('No orders available to send to production');
+    if (selectedGeneratedOrders.length === 0) {
+      toast.info('Select generated orders to send to production');
       return;
     }
-
-    try {
-      await batchToProductionMutation.mutateAsync(generatedOrders.map(order => order.id));
-    } catch {
-      return;
-    }
+    await batchToProductionMutation.mutateAsync(selectedGeneratedOrders.map((order) => order.id));
+    setSelectedOrderIds(new Set());
   };
 
-  const generatedOrdersCount = orders.filter(order => order.orderStatus === 'Generated').length;
-  const inProductionCount = orders.filter(order => order.orderStatus === 'InProduction').length;
-  const readyToShipCount = orders.filter(order => order.orderStatus === 'ReadyToShip').length;
+  const handleBatchShipAndInvoice = async () => {
+    if (selectedReadyToShipOrders.length === 0) {
+      toast.info('Select ready-to-ship orders to ship and invoice');
+      return;
+    }
+    await batchShipAndInvoiceMutation.mutateAsync(selectedReadyToShipOrders.map((order) => order.id));
+    setSelectedOrderIds(new Set());
+  };
 
   if (isLoading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-        <CircularProgress />
-      </Box>
-    );
+    return <LoadingState />;
+  }
+
+  if (error) {
+    return <ErrorState message={error instanceof Error ? error.message : 'Unable to load orders'} />;
   }
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 3 }}>
-        <div>
-          <Typography variant="h4" gutterBottom>
-            Orders
-          </Typography>
+      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', md: 'flex-start' }} spacing={2} sx={{ mb: 3 }}>
+        <Box>
+          <Typography variant="h4" gutterBottom>Orders</Typography>
           <Typography variant="body1" color="text.secondary">
-            Manage customer orders and track their progress through production to shipment
+            Simple queues for production, shipping, and payment follow-up
           </Typography>
-        </div>
-        <Button
-          variant="contained"
-          color="primary"
-          size="large"
-          startIcon={<PlayArrow />}
-          onClick={handleBatchSendToProduction}
-          disabled={generatedOrdersCount === 0 || batchToProductionMutation.isPending}
-        >
-          Send All to Production ({generatedOrdersCount})
-        </Button>
-      </Box>
+        </Box>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+          <Button variant="contained" startIcon={<PlayArrow />} onClick={handleBatchSendToProduction} disabled={selectedGeneratedOrders.length === 0 || batchToProductionMutation.isPending}>
+            Send selected to production ({selectedGeneratedOrders.length})
+          </Button>
+          <Button variant="contained" color="success" startIcon={<LocalShipping />} onClick={handleBatchShipAndInvoice} disabled={selectedReadyToShipOrders.length === 0 || batchShipAndInvoiceMutation.isPending}>
+            Ship + send invoices ({selectedReadyToShipOrders.length})
+          </Button>
+        </Stack>
+      </Stack>
 
-      {error && <Alert severity="error" sx={{ mb: 3 }}>{error instanceof Error ? error.message : 'Unable to load orders'}</Alert>}
-
-      {generatedOrdersCount > 0 && (
-        <Alert severity="info" sx={{ mb: 3 }}>
-          You have {generatedOrdersCount} order{generatedOrdersCount > 1 ? 's' : ''} ready to be sent to production.
-          Click "Send All to Production" to batch process them.
-        </Alert>
-      )}
-
-      <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
-        <Card sx={{ flex: 1 }}>
-          <CardContent>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              Generated
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }}>
+            <TextField label="Search orders, customers, products, SKU" size="small" fullWidth value={filters.search ?? ''} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value || undefined }))} />
+            <Typography variant="body2" color="text.secondary" sx={{ minWidth: 240 }}>
+              Use the queue tabs to manage status.
             </Typography>
-            <Typography variant="h4">{generatedOrdersCount}</Typography>
-          </CardContent>
-        </Card>
-        <Card sx={{ flex: 1 }}>
-          <CardContent>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              In Production
-            </Typography>
-            <Typography variant="h4">{inProductionCount}</Typography>
-          </CardContent>
-        </Card>
-        <Card sx={{ flex: 1 }}>
-          <CardContent>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              Ready to Ship
-            </Typography>
-            <Typography variant="h4">{readyToShipCount}</Typography>
-          </CardContent>
-        </Card>
-      </Box>
+          </Stack>
+        </CardContent>
+      </Card>
 
       <Card>
+        <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable" scrollButtons="auto" sx={{ borderBottom: 1, borderColor: 'divider' }}>
+          {orderTabs.map((item) => (
+            <Tab key={item.value} value={item.value} label={`${item.label} (${tabCounts[item.value] ?? 0})`} />
+          ))}
+        </Tabs>
+        {selectedOrderIds.size > 0 && (
+          <Toolbar sx={{ gap: 2, bgcolor: '#fff8f1', borderBottom: 1, borderColor: 'divider' }}>
+            <Typography variant="body2" sx={{ flexGrow: 1 }}>{selectedOrderIds.size} selected</Typography>
+            <Button size="small" onClick={() => setSelectedOrderIds(new Set())}>Clear selection</Button>
+          </Toolbar>
+        )}
         <CardContent>
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell />
-                  <TableCell>Order #</TableCell>
-                  <TableCell>Customer</TableCell>
-                  <TableCell>Generated Date</TableCell>
-                  <TableCell align="right">Total</TableCell>
-                  <TableCell>Order Status</TableCell>
-                  <TableCell>Invoice Status</TableCell>
-                  <TableCell>Shipment Status</TableCell>
-                  <TableCell>Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {orders.map((order) => (
-                  <OrderRow key={order.id} order={order} onOrderAction={handleOrderAction} />
-                ))}
-                {orders.length === 0 && (
+          {visibleOrders.length === 0 ? (
+            <Alert severity="info">No orders match this queue.</Alert>
+          ) : (
+            <TableContainer>
+              <Table>
+                <TableHead>
                   <TableRow>
-                    <TableCell colSpan={9} align="center">No orders found</TableCell>
+                    <TableCell padding="checkbox">
+                      <Checkbox checked={allVisibleSelected} indeterminate={someVisibleSelected} onChange={(event) => handleSelectVisible(event.target.checked)} />
+                    </TableCell>
+                    <TableCell />
+                    <TableCell>Order #</TableCell>
+                    <TableCell>Customer</TableCell>
+                    <TableCell>Generated Date</TableCell>
+                    <TableCell align="right">Total</TableCell>
+                    <TableCell>Workflow</TableCell>
+                    <TableCell>Payment</TableCell>
+                    <TableCell>Actions</TableCell>
                   </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                </TableHead>
+                <TableBody>
+                  {visibleOrders.map((order) => (
+                    <OrderRow key={order.id} order={order} selected={selectedOrderIds.has(order.id)} onSelect={handleSelect} onOrderAction={handleOrderAction} />
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
         </CardContent>
       </Card>
     </Box>

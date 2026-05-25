@@ -17,6 +17,7 @@ public static class StatementMapping
             statement.Customer.DeliveryAddress,
             statement.Customer.PaymentTerms,
             statement.Customer.AccountStatus,
+            statement.Customer.Users.Any(user => user.Role == UserRole.Customer && user.IsActive),
             statement.Customer.CreatedAt);
 
         return new StatementDto(

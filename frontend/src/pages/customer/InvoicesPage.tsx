@@ -3,25 +3,23 @@ import { Download, KeyboardArrowDown, KeyboardArrowUp, Visibility } from '@mui/i
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { formatInvoiceStatus, getInvoiceStatusColor } from '@/shared/status/statusFormat';
-import { toast } from 'sonner';
 import { Invoice } from '@/entities/types';
 import { useCustomerInvoicesQuery } from '@/entities/invoice/api/invoiceQueries';
-import { downloadCustomerInvoicePdf } from '@/features/invoiceActions/api/invoiceActionsApi';
+import { useDownloadInvoicePdfMutation } from '@/features/invoiceActions/model/invoiceActionsMutations';
 import { LoadingState } from '@/shared/ui/LoadingState';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { EmptyState } from '@/shared/ui/EmptyState';
 
-function InvoiceRow({ invoice }: { invoice: Invoice }) {
+function InvoiceRow({
+  invoice,
+  isDownloading,
+  onDownload,
+}: {
+  invoice: Invoice;
+  isDownloading: boolean;
+  onDownload: (invoice: Invoice) => void;
+}) {
   const [open, setOpen] = useState(false);
-
-  const handleDownload = async () => {
-    try {
-      await downloadCustomerInvoicePdf(invoice.id);
-      toast.success(`Downloading invoice ${invoice.invoiceNumber}`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to download invoice');
-    }
-  };
 
   return (
     <>
@@ -53,7 +51,7 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
           >
             View
           </Button>
-          <IconButton size="small" onClick={handleDownload}>
+          <IconButton size="small" onClick={() => onDownload(invoice)} disabled={isDownloading}>
             <Download />
           </IconButton>
         </TableCell>
@@ -107,6 +105,7 @@ function InvoiceRow({ invoice }: { invoice: Invoice }) {
 
 export default function CustomerInvoices() {
   const { data: invoices = [], isLoading, error } = useCustomerInvoicesQuery();
+  const downloadInvoiceMutation = useDownloadInvoicePdfMutation('customer');
 
   if (isLoading) {
     return <LoadingState />;
@@ -144,7 +143,15 @@ export default function CustomerInvoices() {
               </TableHead>
               <TableBody>
                 {invoices.map((invoice) => (
-                  <InvoiceRow key={invoice.id} invoice={invoice} />
+                  <InvoiceRow
+                    key={invoice.id}
+                    invoice={invoice}
+                    isDownloading={downloadInvoiceMutation.isPending && downloadInvoiceMutation.variables?.invoiceId === invoice.id}
+                    onDownload={(selectedInvoice) => downloadInvoiceMutation.mutate({
+                      invoiceId: selectedInvoice.id,
+                      invoiceNumber: selectedInvoice.invoiceNumber,
+                    })}
+                  />
                 ))}
               </TableBody>
             </Table>

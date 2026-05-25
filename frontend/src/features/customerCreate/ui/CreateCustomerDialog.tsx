@@ -74,7 +74,7 @@ export default function CreateCustomerDialog({
       <DialogTitle>Create New Customer</DialogTitle>
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2, mt: 1 }}>
-          Create a new business customer account. Invitation email delivery is not enabled in this phase.
+          Create a business customer record. Portal access is created later with Send Invite.
         </Typography>
 
         <Divider sx={{ mb: 3 }} />
@@ -113,6 +113,7 @@ export default function CreateCustomerDialog({
               fullWidth
               value={formData.phone}
               onChange={(e) => handleChange('phone', e.target.value)}
+              helperText="Required before sending the first portal invite"
             />
           </Grid>
           <Grid size={{ xs: 12 }}>
@@ -171,10 +172,10 @@ export default function CreateCustomerDialog({
               fullWidth
               value={formData.accountStatus}
               onChange={(e) => handleChange('accountStatus', e.target.value)}
-              helperText="Set to Draft to review before sending invite"
+              helperText="Status is managed by Admin and is not changed by Send Invite"
             >
               <MenuItem key="draft" value="Draft">Draft (not yet invited)</MenuItem>
-              <MenuItem key="invited" value="Invited">Invited (send invitation email)</MenuItem>
+              <MenuItem key="invited" value="Invited">Invited</MenuItem>
               <MenuItem key="active" value="Active">Active (already set up)</MenuItem>
             </TextField>
           </Grid>

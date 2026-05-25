@@ -13,6 +13,8 @@ import { useUpdateAdminCustomerMutation } from '@/features/customerEdit/model/cu
 import { useSendAdminCustomerInviteMutation } from '@/features/customerInvite/model/customerInviteMutations';
 import { useSaveCustomerPriceBookMutation } from '@/features/customerPriceBook/model/customerPriceBookMutations';
 import { useAdminCustomerPriceBookQuery } from '@/features/customerPriceBook/model/customerPriceBookQueries';
+import { formatAccountStatus, formatInvoiceStatus, formatStandingOrderStatus, getAccountStatusColor, getInvoiceStatusColor, getStandingOrderStatusColor } from '@/shared/status/statusFormat';
+import { StatusChip } from '@/shared/ui/StatusChip';
 
 export default function CustomerDetail() {
   const { id } = useParams();
@@ -66,6 +68,12 @@ export default function CustomerDetail() {
 
     sendInviteMutation.mutate(customer.id);
   };
+
+  const canSendInvite = Boolean(customer) &&
+    !customer?.hasPortalUser &&
+    customer?.accountStatus !== 'Suspended' &&
+    customer?.accountStatus !== 'Archived' &&
+    customer?.phone.trim().length > 0;
 
   const handlePriceBookChange = (productId: string, update: Partial<CustomerPriceBookItem>) => {
     setPriceBookItems((currentItems) =>
@@ -131,7 +139,7 @@ export default function CustomerDetail() {
           variant="outlined"
           startIcon={<Send />}
           onClick={handleSendInvite}
-          disabled={sendInviteMutation.isPending || customer.accountStatus === 'Suspended' || customer.accountStatus === 'Archived'}
+          disabled={sendInviteMutation.isPending || !canSendInvite}
           sx={{ mr: 1 }}
         >
           Send Invite
@@ -171,7 +179,14 @@ export default function CustomerDetail() {
 
               <Box sx={{ mb: 2 }}>
                 <Typography variant="body2" color="text.secondary">Account Status</Typography>
-                <Chip label={customer.accountStatus} color="success" size="small" sx={{ mt: 0.5 }} />
+                <Box sx={{ mt: 0.5 }}>
+                  <StatusChip label={formatAccountStatus(customer.accountStatus)} color={getAccountStatusColor(customer.accountStatus)} />
+                </Box>
+              </Box>
+
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary">Portal User</Typography>
+                <Chip label={customer.hasPortalUser ? 'Created' : 'Not invited'} color={customer.hasPortalUser ? 'success' : 'default'} size="small" sx={{ mt: 0.5 }} />
               </Box>
 
               <Box sx={{ mb: 2 }}>
@@ -234,7 +249,7 @@ export default function CustomerDetail() {
                     </Grid>
                     <Grid size={{ xs: 12, sm: 4 }}>
                       <Typography variant="body2" color="text.secondary">Status</Typography>
-                      <Chip label={standingOrder.status} color="success" size="small" />
+                      <StatusChip label={formatStandingOrderStatus(standingOrder.status)} color={getStandingOrderStatusColor(standingOrder.status)} />
                     </Grid>
                     <Grid size={{ xs: 12, sm: 4 }}>
                       <Typography variant="body2" color="text.secondary">Next Closing</Typography>
@@ -404,7 +419,7 @@ export default function CustomerDetail() {
                   >
                     <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                       <Typography variant="body2">{invoice.invoiceNumber}</Typography>
-                      <Chip label={invoice.status} size="small" />
+                      <StatusChip label={formatInvoiceStatus(invoice.status)} color={getInvoiceStatusColor(invoice.status)} />
                     </Box>
                     <Typography variant="caption" color="text.secondary">
                       Outstanding: ${invoice.outstandingAmount.toFixed(2)}

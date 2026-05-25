@@ -7,9 +7,12 @@ import { useAdminInvoicesQuery } from '@/entities/invoice/api/invoiceQueries';
 import { useMarkOverdueInvoicesMutation } from '@/features/invoiceActions/model/invoiceActionsMutations';
 import { useRecordInvoicePaymentMutation, useVoidInvoicePaymentMutation } from '@/features/paymentRecord/model/paymentRecordMutations';
 
+const payableInvoiceStatuses = new Set(['Unpaid', 'PartiallyPaid', 'Overdue']);
+
 export default function Payments() {
   const [openDialog, setOpenDialog] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [paymentAttempted, setPaymentAttempted] = useState(false);
   const [paymentData, setPaymentData] = useState({
     amount: '',
     paymentDate: new Date().toISOString().split('T')[0],
@@ -22,17 +25,25 @@ export default function Payments() {
   const recordPaymentMutation = useRecordInvoicePaymentMutation(() => {
     setOpenDialog(false);
     setSelectedInvoice(null);
+    setPaymentAttempted(false);
   });
   const markOverdueMutation = useMarkOverdueInvoicesMutation();
   const voidPaymentMutation = useVoidInvoicePaymentMutation();
 
-  const unpaidInvoices = invoices.filter(inv => inv.status !== 'Paid' && inv.status !== 'Cancelled');
+  const unpaidInvoices = invoices.filter(inv => payableInvoiceStatuses.has(inv.status) && inv.outstandingAmount > 0);
   const recordedPayments = invoices.flatMap((invoice) =>
     (invoice.payments ?? []).map((payment) => ({ invoice, payment }))
   ).sort((a, b) => b.payment.paymentDate.getTime() - a.payment.paymentDate.getTime());
+  const amount = Number(paymentData.amount);
+  const reference = paymentData.reference.trim();
+  const isAmountValid = Boolean(selectedInvoice) && amount > 0 && amount <= selectedInvoice!.outstandingAmount;
+  const isReferenceValid = reference.length > 0;
+  const isDateValid = Boolean(paymentData.paymentDate);
+  const canRecordPayment = isAmountValid && isReferenceValid && isDateValid;
 
   const handleMarkPaid = (invoice: Invoice) => {
     setSelectedInvoice(invoice);
+    setPaymentAttempted(false);
     setPaymentData({
       amount: invoice.outstandingAmount.toFixed(2),
       paymentDate: new Date().toISOString().split('T')[0],
@@ -48,15 +59,20 @@ export default function Payments() {
       return;
     }
 
+    setPaymentAttempted(true);
+    if (!canRecordPayment) {
+      return;
+    }
+
     recordPaymentMutation.mutate({
       invoiceId: selectedInvoice.id,
       amountLabel: paymentData.amount,
       payload: {
-        amount: Number(paymentData.amount),
+        amount,
         paymentDate: new Date(paymentData.paymentDate).toISOString(),
         paymentMethod: paymentData.paymentMethod,
-        reference: paymentData.reference,
-        note: paymentData.note || undefined,
+        reference,
+        note: paymentData.note.trim() || undefined,
       },
     });
   };
@@ -217,7 +233,15 @@ export default function Payments() {
         </CardContent>
       </Card>
 
-      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={openDialog}
+        onClose={() => {
+          setOpenDialog(false);
+          setPaymentAttempted(false);
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>Record Payment</DialogTitle>
         <DialogContent>
           {selectedInvoice && (
@@ -241,6 +265,8 @@ export default function Payments() {
                 onChange={(e) => setPaymentData({ ...paymentData, paymentDate: e.target.value })}
                 sx={{ mb: 2 }}
                 InputLabelProps={{ shrink: true }}
+                error={paymentAttempted && !isDateValid}
+                helperText={paymentAttempted && !isDateValid ? 'Payment date is required' : undefined}
               />
 
               <TextField
@@ -251,6 +277,8 @@ export default function Payments() {
                 onChange={(e) => setPaymentData({ ...paymentData, amount: e.target.value })}
                 sx={{ mb: 2 }}
                 inputProps={{ step: '0.01', min: 0.01, max: selectedInvoice.outstandingAmount }}
+                error={paymentAttempted && !isAmountValid}
+                helperText={paymentAttempted && !isAmountValid ? `Amount must be greater than $0.00 and no more than $${selectedInvoice.outstandingAmount.toFixed(2)}` : undefined}
               />
 
               <TextField
@@ -274,6 +302,9 @@ export default function Payments() {
                 onChange={(e) => setPaymentData({ ...paymentData, reference: e.target.value })}
                 sx={{ mb: 2 }}
                 placeholder="e.g., Transaction ID, cheque number"
+                required
+                error={paymentAttempted && !isReferenceValid}
+                helperText={paymentAttempted && !isReferenceValid ? 'Payment reference is required' : undefined}
               />
 
               <TextField
@@ -288,11 +319,14 @@ export default function Payments() {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
+          <Button onClick={() => {
+            setOpenDialog(false);
+            setPaymentAttempted(false);
+          }}>Cancel</Button>
           <Button
             onClick={handleSavePayment}
             variant="contained"
-            disabled={recordPaymentMutation.isPending || !paymentData.amount || Number(paymentData.amount) <= 0}
+            disabled={recordPaymentMutation.isPending}
           >
             Record Payment
           </Button>

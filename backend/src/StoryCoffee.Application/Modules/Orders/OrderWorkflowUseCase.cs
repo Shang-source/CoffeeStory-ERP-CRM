@@ -1,5 +1,7 @@
 using System.Globalization;
+using StoryCoffee.Application.Billing;
 using StoryCoffee.Application.Common;
+using StoryCoffee.Application.Statements;
 using StoryCoffee.Contracts;
 using StoryCoffee.Domain;
 
@@ -8,11 +10,13 @@ namespace StoryCoffee.Application.Orders;
 public sealed class OrderWorkflowUseCase(
     IOrderWorkflowRepository orders,
     IUnitOfWork unitOfWork,
-    IClock clock) : IOrderWorkflowService
+    IClock clock,
+    IBillingService billing,
+    IStatementService statements) : IOrderWorkflowService
 {
-    public async Task<IReadOnlyList<OrderDto>> GetAdminOrders(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<OrderDto>> GetAdminOrders(OrderQueryRequest query, CancellationToken cancellationToken)
     {
-        var result = await orders.GetAdminOrders(cancellationToken);
+        var result = await orders.GetAdminOrders(query, cancellationToken);
         return result.Select(order => order.ToDto()).ToList();
     }
 
@@ -57,6 +61,39 @@ public sealed class OrderWorkflowUseCase(
         }, cancellationToken);
     }
 
+    public async Task<BatchShipAndInvoiceResponse> BatchShipAndInvoice(IReadOnlyList<Guid> orderIds, Guid actorUserId, CancellationToken cancellationToken)
+    {
+        Require(orderIds.Count > 0, "At least one order is required.");
+        var updatedOrders = new List<OrderDto>();
+        var failures = new List<string>();
+        var invoiceEmailsSent = 0;
+        var statementEmailsSent = 0;
+
+        foreach (var orderId in orderIds.Distinct())
+        {
+            var result = await ShipAndInvoice(orderId, actorUserId, cancellationToken);
+            updatedOrders.Add(result.Order);
+            if (result.InvoiceEmailSent)
+            {
+                invoiceEmailsSent++;
+            }
+
+            if (result.StatementEmailSent)
+            {
+                statementEmailsSent++;
+            }
+
+            failures.AddRange(result.Failures);
+        }
+
+        return new BatchShipAndInvoiceResponse(
+            updatedOrders.Count,
+            updatedOrders.OrderBy(order => order.OrderNumber).ToList(),
+            invoiceEmailsSent,
+            statementEmailsSent,
+            failures);
+    }
+
     public Task<OrderDto> MarkReadyToShip(Guid orderId, CancellationToken cancellationToken)
     {
         return Apply(orderId, order =>
@@ -68,19 +105,10 @@ public sealed class OrderWorkflowUseCase(
         }, cancellationToken);
     }
 
-    public Task<OrderDto> MarkShipped(Guid orderId, CancellationToken cancellationToken)
+    public async Task<OrderDto> MarkShipped(Guid orderId, CancellationToken cancellationToken)
     {
-        return Apply(orderId, order =>
-        {
-            Require(order.OrderStatus == OrderStatus.ReadyToShip, "Only ready-to-ship orders can be marked shipped.");
-            order.OrderStatus = OrderStatus.Shipped;
-            order.ShipmentStatus = ShipmentStatus.Shipped;
-            if (order.InvoiceStatus == InvoiceStatus.NotIssued)
-            {
-                CreateInvoice(order, InvoiceStatus.Draft);
-            }
-            orders.AddAudit("MarkedOrderShipped", "Order", order.Id, $"Marked order {order.OrderNumber} shipped");
-        }, cancellationToken);
+        var result = await ShipAndInvoice(orderId, null, cancellationToken);
+        return result.Order;
     }
 
     public Task<OrderDto> GenerateInvoice(Guid orderId, CancellationToken cancellationToken)
@@ -100,28 +128,27 @@ public sealed class OrderWorkflowUseCase(
         }, cancellationToken);
     }
 
-    public Task<OrderDto> SendInvoice(Guid orderId, CancellationToken cancellationToken)
+    public async Task<OrderDto> SendInvoice(Guid orderId, CancellationToken cancellationToken)
     {
-        return Apply(orderId, order =>
+        var invoiceId = await unitOfWork.ExecuteInTransaction(async token =>
         {
+            var order = await orders.GetOrder(orderId, token)
+                ?? throw new KeyNotFoundException("Order not found.");
+
             Require(order.InvoiceStatus is InvoiceStatus.Draft or InvoiceStatus.Issued, "Only draft or issued invoices can be sent.");
             if (order.Invoice is null)
             {
-                CreateInvoice(order, InvoiceStatus.Unpaid);
+                CreateInvoice(order, InvoiceStatus.Draft);
             }
-            else
-            {
-                order.Invoice.Status = InvoiceStatus.Unpaid;
-                order.Invoice.EmailStatus = EmailStatus.Sent;
-                order.Invoice.UpdatedAt = clock.UtcNow;
-                order.InvoiceStatus = InvoiceStatus.Unpaid;
-            }
-            orders.AddAudit("SentInvoice", "Order", order.Id, $"Sent invoice for order {order.OrderNumber}");
-            if (order.Invoice is not null)
-            {
-                orders.AddEmailLog("Invoice", order.Invoice.Id, order.Customer.Email, $"StoryCoffee invoice {order.Invoice.InvoiceNumber}", EmailStatus.Sent);
-            }
+
+            order.UpdatedAt = clock.UtcNow;
+            return order.Invoice!.Id;
         }, cancellationToken);
+
+        await billing.SendInvoiceEmail(invoiceId, cancellationToken);
+        var updatedOrder = await orders.GetOrder(orderId, cancellationToken)
+            ?? throw new KeyNotFoundException("Order not found.");
+        return updatedOrder.ToDto();
     }
 
     public Task<OrderDto> Cancel(Guid orderId, CancellationToken cancellationToken)
@@ -168,7 +195,51 @@ public sealed class OrderWorkflowUseCase(
         }, cancellationToken);
     }
 
-    private void CreateInvoice(Order order, InvoiceStatus status)
+    private async Task<ShipAndInvoiceResult> ShipAndInvoice(Guid orderId, Guid? actorUserId, CancellationToken cancellationToken)
+    {
+        var invoiceId = await unitOfWork.ExecuteInTransaction(async token =>
+        {
+            var order = await orders.GetOrder(orderId, token)
+                ?? throw new KeyNotFoundException("Order not found.");
+
+            Require(order.OrderStatus == OrderStatus.ReadyToShip, "Only ready-to-ship orders can be shipped and invoiced.");
+            order.OrderStatus = OrderStatus.Shipped;
+            order.ShipmentStatus = ShipmentStatus.Shipped;
+            var invoice = order.Invoice ?? CreateInvoice(order, InvoiceStatus.Draft);
+            if (order.InvoiceStatus == InvoiceStatus.NotIssued)
+            {
+                order.InvoiceStatus = InvoiceStatus.Draft;
+            }
+
+            order.UpdatedAt = clock.UtcNow;
+            orders.AddAudit("MarkedOrderShipped", "Order", order.Id, $"Marked order {order.OrderNumber} shipped", actorUserId, actorUserId.HasValue ? UserRole.Admin.ToString() : null);
+            return invoice.Id;
+        }, cancellationToken);
+
+        var failures = new List<string>();
+        var invoice = await billing.SendInvoiceEmail(invoiceId, cancellationToken);
+        var invoiceEmailSent = invoice.EmailStatus == EmailStatus.Sent;
+        var statementEmailSent = false;
+        if (invoiceEmailSent)
+        {
+            var statementResult = await statements.GenerateAndEmailForCustomerIfOtherDebt(invoice.CustomerId, invoice.Id, cancellationToken);
+            statementEmailSent = statementResult.Sent;
+            if (!statementResult.Sent && !string.IsNullOrWhiteSpace(statementResult.ErrorMessage))
+            {
+                failures.Add($"{invoice.InvoiceNumber}: {statementResult.ErrorMessage}");
+            }
+        }
+        else
+        {
+            failures.Add($"{invoice.InvoiceNumber}: invoice email failed.");
+        }
+
+        var updatedOrder = await orders.GetOrder(orderId, cancellationToken)
+            ?? throw new KeyNotFoundException("Order not found.");
+        return new ShipAndInvoiceResult(updatedOrder.ToDto(), invoiceEmailSent, statementEmailSent, failures);
+    }
+
+    private Invoice CreateInvoice(Order order, InvoiceStatus status)
     {
         var now = clock.UtcNow;
         order.InvoiceStatus = status;
@@ -202,6 +273,7 @@ public sealed class OrderWorkflowUseCase(
 
         order.Invoice = invoice;
         orders.AddInvoice(invoice);
+        return invoice;
     }
 
     private async Task<ProductionBatch> EnsureProductionBatch(IReadOnlyList<Order> orderList, Guid? actorUserId, CancellationToken cancellationToken)
@@ -241,7 +313,7 @@ public sealed class OrderWorkflowUseCase(
             var item = batch.Items.FirstOrDefault(x => x.ProductId == requiredItem.ProductId);
             if (item is null)
             {
-                batch.Items.Add(new ProductionItem
+                var productionItem = new ProductionItem
                 {
                     Id = Guid.NewGuid(),
                     ProductionBatchId = batch.Id,
@@ -251,7 +323,9 @@ public sealed class OrderWorkflowUseCase(
                     TotalQuantity = requiredItem.TotalQuantity,
                     CreatedAt = now,
                     UpdatedAt = now
-                });
+                };
+                batch.Items.Add(productionItem);
+                orders.AddProductionItem(productionItem);
                 continue;
             }
 
@@ -296,4 +370,10 @@ public sealed class OrderWorkflowUseCase(
             throw new InvalidOperationException(message);
         }
     }
+
+    private sealed record ShipAndInvoiceResult(
+        OrderDto Order,
+        bool InvoiceEmailSent,
+        bool StatementEmailSent,
+        IReadOnlyList<string> Failures);
 }

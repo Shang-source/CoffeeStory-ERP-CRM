@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, TextField, Select, MenuItem, FormControl, InputLabel, IconButton, Chip, Dialog, DialogTitle, DialogContent, DialogActions, Grid, Alert, CircularProgress } from '@mui/material';
+import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, TextField, Select, MenuItem, FormControl, InputLabel, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Grid, Alert, CircularProgress } from '@mui/material';
 import { Add, Delete, Edit, Save } from '@mui/icons-material';
 import { toast } from 'sonner';
 import { OrderFrequency, StandingOrder } from '@/entities/types';
 import { useCustomerProductsQuery } from '@/entities/product/api/productQueries';
 import { useCustomerStandingOrderQuery } from '@/entities/standingOrder/api/standingOrderQueries';
 import { useSaveCustomerStandingOrderMutation } from '@/features/standingOrderEditor/model/standingOrderEditorMutations';
+import { formatStandingOrderStatus, getStandingOrderStatusColor } from '@/shared/status/statusFormat';
+import { StatusChip } from '@/shared/ui/StatusChip';
 
 export default function StandingOrderPage() {
   const standingOrderQuery = useCustomerStandingOrderQuery();
@@ -99,8 +101,21 @@ export default function StandingOrderPage() {
     );
   }
 
-  if (error || !standingOrder) {
-    return <Alert severity="error">{error instanceof Error ? error.message : error || 'Standing order not found'}</Alert>;
+  if (error) {
+    return <Alert severity="error">{error instanceof Error ? error.message : error}</Alert>;
+  }
+
+  if (!standingOrder) {
+    return (
+      <Box>
+        <Typography variant="h4" gutterBottom>
+          Standing Order
+        </Typography>
+        <Alert severity="info">
+          No standing order has been configured for your account yet. Please contact StoryCoffee to set up your recurring order before editing order details.
+        </Alert>
+      </Box>
+    );
   }
 
   const estimatedTotal = standingOrder.items.reduce(
@@ -202,7 +217,7 @@ export default function StandingOrderPage() {
                 <Typography variant="body2" color="text.secondary" gutterBottom>
                   Status
                 </Typography>
-                <Chip label={standingOrder.status} color="success" />
+                <StatusChip label={formatStandingOrderStatus(standingOrder.status)} color={getStandingOrderStatusColor(standingOrder.status)} />
               </Box>
 
               <Box sx={{ mb: 2 }}>

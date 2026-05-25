@@ -21,6 +21,7 @@ public static class BillingMapping
                 invoice.Customer.DeliveryAddress,
                 invoice.Customer.PaymentTerms,
                 invoice.Customer.AccountStatus,
+                invoice.Customer.Users.Any(user => user.Role == UserRole.Customer && user.IsActive),
                 invoice.Customer.CreatedAt),
             invoice.OrderId,
             invoice.IssueDate,

@@ -8,7 +8,9 @@ public sealed class StatementUseCase(
     IStatementRepository statementRepository,
     IEmailSender emailSender,
     IOutboxPublisher outbox,
-    IClock clock) : IStatementService
+    IClock clock,
+    IPdfGenerator pdfGenerator,
+    IDocumentStorageService documentStorage) : IStatementService
 {
     public async Task<IReadOnlyList<StatementDto>> GetAdminStatements(CancellationToken cancellationToken)
     {
@@ -89,6 +91,28 @@ public sealed class StatementUseCase(
         return generated.Select(statement => statement.ToDto()).ToList();
     }
 
+    public async Task<StatementAutoEmailResult> GenerateAndEmailForCustomerIfOtherDebt(Guid customerId, Guid invoiceId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var invoices = await statementRepository.GetOpenInvoicesForCustomer(customerId, cancellationToken);
+            if (!invoices.Any(invoice => invoice.Id != invoiceId))
+            {
+                return new StatementAutoEmailResult(false, null);
+            }
+
+            var statement = await UpsertEditableStatement(customerId, invoices, cancellationToken);
+            var sent = await SendStatementEmail(statement.Id, cancellationToken);
+            return sent.EmailStatus == EmailStatus.Sent
+                ? new StatementAutoEmailResult(true, null)
+                : new StatementAutoEmailResult(false, "Statement email failed.");
+        }
+        catch (Exception ex)
+        {
+            return new StatementAutoEmailResult(false, ex.Message);
+        }
+    }
+
     public async Task<PdfDocumentResult> GenerateStatementPdf(Guid statementId, Guid? customerId, CancellationToken cancellationToken)
     {
         var statement = await GetStatementOrThrow(statementId, customerId, cancellationToken);
@@ -105,24 +129,7 @@ public sealed class StatementUseCase(
         statementRepository.AddAudit("GeneratedStatementPdf", "Statement", statement.Id, $"Generated PDF for statement {statement.StatementNumber}");
         await statementRepository.SaveChanges(cancellationToken);
 
-        var lines = new List<string>
-        {
-            $"Customer: {statement.Customer.BusinessName}",
-            $"Statement date: {statement.StatementDate:yyyy-MM-dd}",
-            $"Period: {statement.PeriodStart:yyyy-MM-dd} - {statement.PeriodEnd:yyyy-MM-dd}",
-            $"Total outstanding: ${statement.TotalOutstanding:F2}",
-            $"Status: {statement.Status}"
-        };
-        lines.AddRange(statement.Invoices
-            .OrderBy(invoice => invoice.DueDateSnapshot)
-            .Select(invoice => $"{invoice.InvoiceNumberSnapshot}: ${invoice.OutstandingAmountSnapshot:F2} due {invoice.DueDateSnapshot:yyyy-MM-dd}"));
-
-        return new PdfDocumentResult(
-            $"Statement {statement.StatementNumber}",
-            $"{statement.StatementNumber}.pdf",
-            statement.PdfFileKey,
-            statement.PdfGeneratedAt.Value,
-            lines);
+        return BuildStatementPdf(statement);
     }
 
     public async Task<StatementDto> SendStatementEmail(Guid statementId, CancellationToken cancellationToken)
@@ -142,10 +149,20 @@ public sealed class StatementUseCase(
 
         statement.EmailStatus = EmailStatus.Pending;
         statement.UpdatedAt = clock.UtcNow;
+        statement.PdfFileKey ??= $"statements/{statement.StatementNumber}.pdf";
+        statement.PdfGeneratedAt = clock.UtcNow;
+        var pdf = BuildStatementPdf(statement);
+        var pdfContent = pdfGenerator.Generate(pdf);
+        await documentStorage.Save(pdf.FileKey, pdfContent, "application/pdf", cancellationToken);
+
         var subject = $"StoryCoffee statement {statement.StatementNumber}";
         var emailLog = statementRepository.AddEmailLog("Statement", statement.Id, statement.Customer.Email, subject, EmailStatus.Pending);
-        var message = new EmailMessage(statement.Customer.Email, subject, $"Your StoryCoffee statement {statement.StatementNumber} is ready.");
-        var outboxMessage = outbox.EnqueueEmail(new OutboxEmailPayload("Statement", statement.Id, emailLog.Id, message.RecipientEmail, message.Subject, message.Body));
+        var message = new EmailMessage(
+            statement.Customer.Email,
+            subject,
+            $"Your StoryCoffee statement {statement.StatementNumber} is attached.",
+            [new EmailAttachment(pdf.FileName, "application/pdf", pdfContent)]);
+        var outboxMessage = outbox.EnqueueEmail(new OutboxEmailPayload("Statement", statement.Id, emailLog.Id, message.RecipientEmail, message.Subject, message.Body, message.Attachments));
         await statementRepository.SaveChanges(cancellationToken);
 
         var sendResult = await emailSender.Send(message, cancellationToken);
@@ -176,6 +193,94 @@ public sealed class StatementUseCase(
         statement.UpdatedAt = clock.UtcNow;
         await statementRepository.SaveChanges(cancellationToken);
         return statement.ToDto();
+    }
+
+    private async Task<Statement> UpsertEditableStatement(Guid customerId, IReadOnlyList<Invoice> invoices, CancellationToken cancellationToken)
+    {
+        var now = clock.UtcNow;
+        var statement = await statementRepository.GetEditableCustomerStatement(customerId, cancellationToken);
+        if (statement is null)
+        {
+            statement = new Statement
+            {
+                Id = Guid.NewGuid(),
+                StatementNumber = $"STMT-{now:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..4].ToUpperInvariant()}",
+                CustomerId = customerId,
+                Customer = invoices[0].Customer,
+                StatementDate = now,
+                Status = StatementStatus.ReadyToSend,
+                EmailStatus = EmailStatus.NotSent,
+                CreatedAt = now
+            };
+            statementRepository.AddStatement(statement);
+            statementRepository.AddAudit("GeneratedStatement", "Statement", statement.Id, $"Generated statement {statement.StatementNumber}");
+        }
+
+        statement.StatementDate = now;
+        statement.PeriodStart = invoices.Min(invoice => invoice.IssueDate);
+        statement.PeriodEnd = now;
+        statement.TotalOutstanding = invoices.Sum(invoice => invoice.OutstandingAmount);
+        statement.Status = StatementStatus.ReadyToSend;
+        statement.UpdatedAt = now;
+        statement.Invoices.Clear();
+        foreach (var invoice in invoices.OrderBy(invoice => invoice.DueDate))
+        {
+            statement.Invoices.Add(new StatementInvoice
+            {
+                Id = Guid.NewGuid(),
+                InvoiceId = invoice.Id,
+                InvoiceNumberSnapshot = invoice.InvoiceNumber,
+                IssueDateSnapshot = invoice.IssueDate,
+                DueDateSnapshot = invoice.DueDate,
+                TotalAmountSnapshot = invoice.TotalAmount,
+                OutstandingAmountSnapshot = invoice.OutstandingAmount,
+                StatusSnapshot = invoice.Status
+            });
+        }
+
+        await statementRepository.SaveChanges(cancellationToken);
+        return statement;
+    }
+
+    private static PdfDocumentResult BuildStatementPdf(Statement statement)
+    {
+        var lines = new List<string>
+        {
+            $"Customer: {statement.Customer.BusinessName}",
+            $"Statement date: {statement.StatementDate:yyyy-MM-dd}",
+            $"Period: {statement.PeriodStart:yyyy-MM-dd} - {statement.PeriodEnd:yyyy-MM-dd}",
+            $"Total outstanding: ${statement.TotalOutstanding:F2}",
+            $"Status: {statement.Status}"
+        };
+        lines.AddRange(statement.Invoices
+            .OrderBy(invoice => invoice.DueDateSnapshot)
+            .Select(invoice => $"{invoice.InvoiceNumberSnapshot}: ${invoice.OutstandingAmountSnapshot:F2} due {invoice.DueDateSnapshot:yyyy-MM-dd}"));
+
+        return new PdfDocumentResult(
+            $"Statement {statement.StatementNumber}",
+            $"{statement.StatementNumber}.pdf",
+            statement.PdfFileKey!,
+            statement.PdfGeneratedAt!.Value,
+            lines,
+            Statement: new StatementPdfDocument(
+                StoryCoffeeDocumentProfile.Default,
+                statement.StatementNumber,
+                statement.Customer.BusinessName,
+                statement.Customer.BillingAddress,
+                statement.StatementDate,
+                statement.PeriodStart,
+                statement.PeriodEnd,
+                statement.TotalOutstanding,
+                statement.Invoices
+                    .OrderBy(invoice => invoice.DueDateSnapshot)
+                    .Select(invoice => new StatementInvoicePdfLine(
+                        invoice.InvoiceNumberSnapshot,
+                        invoice.IssueDateSnapshot,
+                        invoice.DueDateSnapshot,
+                        invoice.TotalAmountSnapshot,
+                        invoice.OutstandingAmountSnapshot,
+                        invoice.StatusSnapshot))
+                    .ToList()));
     }
 
     private async Task<Statement> GetStatementOrThrow(Guid statementId, Guid? customerId, CancellationToken cancellationToken)

@@ -1,30 +1,29 @@
 import { Box, Button, Card, CardContent, Chip, Divider, Grid, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material';
 import { ArrowBack, Download } from '@mui/icons-material';
 import { Link, useNavigate, useParams } from 'react-router';
-import { toast } from 'sonner';
 import { useCustomerStatementQuery } from '@/entities/statement/api/statementQueries';
-import { downloadCustomerStatementPdf } from '@/features/statementActions/api/statementActionsApi';
-import { formatInvoiceStatus, getInvoiceStatusColor } from '@/shared/status/statusFormat';
+import { useDownloadStatementPdfMutation } from '@/features/statementActions/model/statementActionsMutations';
+import { formatInvoiceStatus, formatStatementStatus, getInvoiceStatusColor, getStatementStatusColor } from '@/shared/status/statusFormat';
 import { LoadingState } from '@/shared/ui/LoadingState';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { MoneyText } from '@/shared/ui/MoneyText';
+import { StatusChip } from '@/shared/ui/StatusChip';
 
 export default function CustomerStatementDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { data: statement, isLoading, error } = useCustomerStatementQuery(id);
+  const downloadStatementMutation = useDownloadStatementPdfMutation('customer');
 
   const handleDownload = async () => {
     if (!statement) {
       return;
     }
 
-    try {
-      await downloadCustomerStatementPdf(statement.id);
-      toast.success(`Downloading statement ${statement.statementNumber}`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to download statement');
-    }
+    downloadStatementMutation.mutate({
+      statementId: statement.id,
+      statementNumber: statement.statementNumber,
+    });
   };
 
   if (!id) {
@@ -59,7 +58,7 @@ export default function CustomerStatementDetailPage() {
             </Typography>
           ) : null}
         </Box>
-        <Button variant="contained" startIcon={<Download />} onClick={handleDownload}>
+        <Button variant="contained" startIcon={<Download />} onClick={handleDownload} disabled={downloadStatementMutation.isPending}>
           Download PDF
         </Button>
       </Box>
@@ -116,7 +115,7 @@ export default function CustomerStatementDetailPage() {
               <Typography variant="h6" gutterBottom>
                 Summary
               </Typography>
-              <Chip label={statement.status} sx={{ mb: 2 }} />
+              <StatusChip label={formatStatementStatus(statement.status)} color={getStatementStatusColor(statement.status)} />
               <Divider sx={{ my: 2 }} />
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                 <Typography variant="body2">Invoices</Typography>

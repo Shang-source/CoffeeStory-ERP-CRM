@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Box, Card, CardContent, TextField, Button, Typography, ToggleButtonGroup, ToggleButton, Alert } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
 import { LocalCafe } from '@mui/icons-material';
 import { useAuth } from '@/app/providers/AuthProvider';
 
@@ -13,17 +13,17 @@ export default function Login() {
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const navigateAfterAuth = (role: string) => {
+    navigate(role === 'Customer' ? '/customer' : '/admin');
+  };
+
   const handleLogin = async () => {
     setIsSubmitting(true);
     setError('');
     const profile = await login(email, password);
     setIsSubmitting(false);
     if (profile) {
-      if (profile.role === 'Customer') {
-        navigate('/customer');
-      } else {
-        navigate('/admin');
-      }
+      navigateAfterAuth(profile.role);
     } else {
       setError('Invalid email or password');
     }

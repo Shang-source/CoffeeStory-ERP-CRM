@@ -8,6 +8,7 @@ public interface IProductionRepository
     Task<ProductionBatch?> GetOpenProductionBatchWithItems(CancellationToken cancellationToken);
     Task<int> CountProductionBatchesWithPrefix(string prefix, CancellationToken cancellationToken);
     void AddProductionBatch(ProductionBatch productionBatch);
+    void AddProductionItem(ProductionItem productionItem);
     Task<ProductionItem?> GetProductionItem(Guid productionItemId, CancellationToken cancellationToken);
     Task<ProductionItem?> GetProductionItem(Guid productionBatchId, Guid productId, CancellationToken cancellationToken);
     Task<IReadOnlyList<ProductionItem>> GetProductionItems(Guid productionBatchId, CancellationToken cancellationToken);

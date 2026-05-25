@@ -2,31 +2,25 @@ import { useState } from 'react';
 import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, IconButton, Collapse, Alert, CircularProgress } from '@mui/material';
 import { Send, Download, KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
 import { formatInvoiceStatus, getInvoiceStatusColor } from '@/shared/status/statusFormat';
-import { toast } from 'sonner';
 import { Invoice } from '@/entities/types';
 import { useAdminInvoicesQuery } from '@/entities/invoice/api/invoiceQueries';
-import { downloadAdminInvoicePdf } from '@/features/invoiceActions/api/invoiceActionsApi';
-import { useSendInvoiceEmailMutation } from '@/features/invoiceActions/model/invoiceActionsMutations';
+import { useDownloadInvoicePdfMutation, useSendInvoiceEmailMutation } from '@/features/invoiceActions/model/invoiceActionsMutations';
 
 function InvoiceRow({
   invoice,
   isSending,
+  isDownloading,
   onSendEmail,
+  onDownload,
 }: {
   invoice: Invoice;
   isSending: boolean;
+  isDownloading: boolean;
   onSendEmail: (invoiceId: string) => void;
+  onDownload: (invoice: Invoice) => void;
 }) {
   const [open, setOpen] = useState(false);
-
-  const handleDownload = async () => {
-    try {
-      await downloadAdminInvoicePdf(invoice.id);
-      toast.success(`Downloading invoice ${invoice.invoiceNumber}`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to download invoice');
-    }
-  };
+  const canSendEmail = invoice.status === 'Draft' || invoice.status === 'Issued';
 
   return (
     <>
@@ -53,11 +47,12 @@ function InvoiceRow({
           <IconButton
             size="small"
             onClick={() => onSendEmail(invoice.id)}
-            disabled={isSending || invoice.status === 'Paid' || invoice.status === 'Cancelled'}
+            disabled={isSending || !canSendEmail}
+            title={canSendEmail ? 'Send invoice email' : 'Only draft or issued invoices can be sent'}
           >
             <Send />
           </IconButton>
-          <IconButton size="small" onClick={handleDownload}>
+          <IconButton size="small" onClick={() => onDownload(invoice)} disabled={isDownloading}>
             <Download />
           </IconButton>
         </TableCell>
@@ -112,6 +107,7 @@ function InvoiceRow({
 export default function Invoices() {
   const { data: invoices = [], isLoading, error } = useAdminInvoicesQuery();
   const sendEmailMutation = useSendInvoiceEmailMutation();
+  const downloadInvoiceMutation = useDownloadInvoicePdfMutation('admin');
 
   if (isLoading) {
     return (
@@ -159,7 +155,12 @@ export default function Invoices() {
                     key={invoice.id}
                     invoice={invoice}
                     isSending={sendEmailMutation.isPending && sendEmailMutation.variables === invoice.id}
+                    isDownloading={downloadInvoiceMutation.isPending && downloadInvoiceMutation.variables?.invoiceId === invoice.id}
                     onSendEmail={(invoiceId) => sendEmailMutation.mutate(invoiceId)}
+                    onDownload={(selectedInvoice) => downloadInvoiceMutation.mutate({
+                      invoiceId: selectedInvoice.id,
+                      invoiceNumber: selectedInvoice.invoiceNumber,
+                    })}
                   />
                 ))}
                 {invoices.length === 0 && (

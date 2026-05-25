@@ -8,9 +8,10 @@ public sealed class EfUserRepository(AppDbContext db) : IUserRepository
 {
     public Task<User?> FindActiveByEmailWithCustomer(string email, CancellationToken cancellationToken)
     {
+        var normalizedEmail = NormalizeEmail(email);
         return db.Users
             .Include(user => user.Customer)
-            .FirstOrDefaultAsync(user => user.Email == email && user.IsActive, cancellationToken);
+            .FirstOrDefaultAsync(user => user.Email.ToLower() == normalizedEmail && user.IsActive, cancellationToken);
     }
 
     public Task<User?> FindActiveById(Guid userId, CancellationToken cancellationToken)
@@ -26,5 +27,10 @@ public sealed class EfUserRepository(AppDbContext db) : IUserRepository
     public Task SaveChanges(CancellationToken cancellationToken)
     {
         return db.SaveChangesAsync(cancellationToken);
+    }
+
+    private static string NormalizeEmail(string? email)
+    {
+        return (email ?? "").Trim().ToLowerInvariant();
     }
 }

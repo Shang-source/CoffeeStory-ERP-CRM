@@ -1328,7 +1328,15 @@ export interface paths {
         };
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    Search?: string;
+                    OrderStatus?: components["schemas"]["OrderStatus"];
+                    InvoiceStatus?: components["schemas"]["InvoiceStatus"];
+                    ShipmentStatus?: components["schemas"]["ShipmentStatus"];
+                    CustomerId?: string;
+                    From?: string;
+                    To?: string;
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
@@ -1428,6 +1436,49 @@ export interface paths {
                         "text/plain": components["schemas"]["BatchToProductionResponse"];
                         "application/json": components["schemas"]["BatchToProductionResponse"];
                         "text/json": components["schemas"]["BatchToProductionResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/admin/orders/batch-ship-and-invoice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["BatchShipAndInvoiceRequest"];
+                    "text/json": components["schemas"]["BatchShipAndInvoiceRequest"];
+                    "application/*+json": components["schemas"]["BatchShipAndInvoiceRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["BatchShipAndInvoiceResponse"];
+                        "application/json": components["schemas"]["BatchShipAndInvoiceResponse"];
+                        "text/json": components["schemas"]["BatchShipAndInvoiceResponse"];
                     };
                 };
             };
@@ -2932,6 +2983,19 @@ export interface components {
             /** Format: int32 */
             totalPages?: number;
         };
+        BatchShipAndInvoiceRequest: {
+            orderIds?: string[] | null;
+        };
+        BatchShipAndInvoiceResponse: {
+            /** Format: int32 */
+            updated?: number;
+            orders?: components["schemas"]["OrderDto"][] | null;
+            /** Format: int32 */
+            invoiceEmailsSent?: number;
+            /** Format: int32 */
+            statementEmailsSent?: number;
+            emailFailures?: string[] | null;
+        };
         BatchToProductionRequest: {
             orderIds?: string[] | null;
         };
@@ -3004,6 +3068,7 @@ export interface components {
             deliveryAddress?: string | null;
             paymentTerms?: string | null;
             accountStatus?: components["schemas"]["AccountStatus"];
+            hasPortalUser?: boolean;
             /** Format: date-time */
             createdAt?: string;
         };

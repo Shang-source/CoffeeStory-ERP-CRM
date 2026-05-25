@@ -7,6 +7,8 @@ import { Customer } from '@/entities/types';
 import { useCustomerProfileQuery } from '@/entities/customer/api/customerQueries';
 import { useUpdateCustomerProfileMutation } from '@/features/customerEdit/model/customerEditMutations';
 import { useChangeCustomerPasswordMutation } from '@/features/passwordChange/model/passwordChangeMutations';
+import { formatAccountStatus, getAccountStatusColor } from '@/shared/status/statusFormat';
+import { StatusChip } from '@/shared/ui/StatusChip';
 
 export default function AccountSettings() {
   const navigate = useNavigate();
@@ -94,11 +96,23 @@ export default function AccountSettings() {
         Manage your account information
       </Typography>
 
+      {customer.accountStatus !== 'Active' && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Your account is {formatAccountStatus(customer.accountStatus)}. Standing order generation is enabled only after StoryCoffee marks your account as Active.
+        </Alert>
+      )}
+
       <Card>
         <CardContent>
           <Typography variant="h6" gutterBottom>
             Business Information
           </Typography>
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="body2" color="text.secondary" gutterBottom>
+              Account Status
+            </Typography>
+            <StatusChip label={formatAccountStatus(customer.accountStatus)} color={getAccountStatusColor(customer.accountStatus)} />
+          </Box>
           <Divider sx={{ mb: 3 }} />
 
           <Grid container spacing={3}>

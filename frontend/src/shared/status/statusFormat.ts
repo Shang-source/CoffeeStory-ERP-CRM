@@ -3,6 +3,9 @@ type InvoiceStatus = 'NotIssued' | 'Draft' | 'Issued' | 'Unpaid' | 'PartiallyPai
 type ShipmentStatus = 'NotShipped' | 'ReadyToShip' | 'Shipped' | 'Delivered';
 type ProductionStatus = 'Pending' | 'InProgress' | 'Completed' | 'OnHold';
 type EmailStatus = 'NotSent' | 'Pending' | 'Sent' | 'Failed' | 'Bounced';
+type StatementStatus = 'Draft' | 'ReadyToSend' | 'Sent' | 'Cancelled';
+type StandingOrderStatus = 'Active' | 'Paused' | 'Cancelled';
+type AccountStatus = 'Draft' | 'Invited' | 'Active' | 'Suspended' | 'Archived';
 
 export const getOrderStatusColor = (status: OrderStatus): string => {
   const colors: Record<OrderStatus, string> = {
@@ -19,10 +22,10 @@ export const getOrderStatusColor = (status: OrderStatus): string => {
 export const getInvoiceStatusColor = (status: InvoiceStatus): string => {
   const colors: Record<InvoiceStatus, string> = {
     NotIssued: '#BDBDBD',
-    Draft: '#9E9E9E',
-    Issued: '#2196F3',
+    Draft: '#BDBDBD',
+    Issued: '#BDBDBD',
     Unpaid: '#673AB7',
-    PartiallyPaid: '#FF9800',
+    PartiallyPaid: '#673AB7',
     Paid: '#4CAF50',
     Overdue: '#F44336',
     Cancelled: '#757575',
@@ -42,7 +45,7 @@ export const getShipmentStatusColor = (status: ShipmentStatus): string => {
 
 export const formatOrderStatus = (status: OrderStatus): string => {
   const labels: Record<OrderStatus, string> = {
-    Generated: 'Generated',
+    Generated: 'Need Production',
     InProduction: 'In Production',
     ReadyToShip: 'Ready to Ship',
     Shipped: 'Shipped',
@@ -54,11 +57,11 @@ export const formatOrderStatus = (status: OrderStatus): string => {
 
 export const formatInvoiceStatus = (status: InvoiceStatus): string => {
   const labels: Record<InvoiceStatus, string> = {
-    NotIssued: 'Not Issued',
-    Draft: 'Draft',
-    Issued: 'Issued',
-    Unpaid: 'Unpaid',
-    PartiallyPaid: 'Partially Paid',
+    NotIssued: 'Not Sent',
+    Draft: 'Not Sent',
+    Issued: 'Not Sent',
+    Unpaid: 'Awaiting Payment',
+    PartiallyPaid: 'Awaiting Payment',
     Paid: 'Paid',
     Overdue: 'Overdue',
     Cancelled: 'Cancelled',
@@ -92,6 +95,66 @@ export const getProductionStatusColor = (status: ProductionStatus): string => {
     InProgress: '#FF9800',
     Completed: '#4CAF50',
     OnHold: '#F44336',
+  };
+  return colors[status];
+};
+
+export const formatStatementStatus = (status: StatementStatus): string => {
+  const labels: Record<StatementStatus, string> = {
+    Draft: 'Not Sent',
+    ReadyToSend: 'Not Sent',
+    Sent: 'Sent',
+    Cancelled: 'Cancelled',
+  };
+  return labels[status];
+};
+
+export const getStatementStatusColor = (status: StatementStatus): string => {
+  const colors: Record<StatementStatus, string> = {
+    Draft: '#9E9E9E',
+    ReadyToSend: '#9E9E9E',
+    Sent: '#4CAF50',
+    Cancelled: '#757575',
+  };
+  return colors[status];
+};
+
+export const formatStandingOrderStatus = (status: StandingOrderStatus): string => {
+  const labels: Record<StandingOrderStatus, string> = {
+    Active: 'Active',
+    Paused: 'Paused',
+    Cancelled: 'Cancelled',
+  };
+  return labels[status];
+};
+
+export const getStandingOrderStatusColor = (status: StandingOrderStatus): string => {
+  const colors: Record<StandingOrderStatus, string> = {
+    Active: '#4CAF50',
+    Paused: '#FF9800',
+    Cancelled: '#757575',
+  };
+  return colors[status];
+};
+
+export const formatAccountStatus = (status: AccountStatus): string => {
+  const labels: Record<AccountStatus, string> = {
+    Draft: 'Draft',
+    Invited: 'Invited',
+    Active: 'Active',
+    Suspended: 'Suspended',
+    Archived: 'Archived',
+  };
+  return labels[status];
+};
+
+export const getAccountStatusColor = (status: AccountStatus): string => {
+  const colors: Record<AccountStatus, string> = {
+    Draft: '#9E9E9E',
+    Invited: '#2196F3',
+    Active: '#4CAF50',
+    Suspended: '#F44336',
+    Archived: '#757575',
   };
   return colors[status];
 };

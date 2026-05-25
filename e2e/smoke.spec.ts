@@ -38,11 +38,14 @@ test('admin production-to-invoice workflow is visible to customer', async ({ pag
   await expect(page.getByRole('heading', { name: 'Orders' })).toBeVisible();
   await expect(page.getByText(generatedOrder.orderNumber)).toBeVisible();
 
+  const generatedOrderRow = page.locator('tr').filter({ hasText: generatedOrder.orderNumber }).first();
+  await generatedOrderRow.getByRole('checkbox').check();
+
   const batchResponse = page.waitForResponse((response) =>
     response.url().includes('/api/admin/orders/batch-to-production') &&
     response.request().method() === 'POST'
   );
-  await page.getByRole('button', { name: /Send All to Production/ }).click();
+  await page.getByRole('button', { name: /Send selected to production/ }).click();
   await expect((await batchResponse).ok()).toBeTruthy();
   await expect.poll(async () => {
     const order = await getAdminOrder(request, adminToken, generatedOrder.id);
@@ -51,7 +54,6 @@ test('admin production-to-invoice workflow is visible to customer', async ({ pag
 
   const readyOrder = await completeProductionForOrder(request, adminToken, generatedOrder.id, generatedOrder.orderNumber);
   const shippedOrder = await postJson(request, `/api/admin/orders/${readyOrder.id}/mark-shipped`, adminToken);
-  await postJson(request, `/api/admin/orders/${shippedOrder.id}/generate-invoice`, adminToken);
   const invoice = await expectInvoiceForOrder(request, adminToken, shippedOrder.id);
 
   await page.goto('/admin/invoices');

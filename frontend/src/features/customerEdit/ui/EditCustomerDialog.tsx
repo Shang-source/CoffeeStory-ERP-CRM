@@ -148,6 +148,8 @@ export default function EditCustomerDialog({
               value={formData.accountStatus}
               onChange={(e) => handleChange('accountStatus', e.target.value as any)}
             >
+              <MenuItem key="draft" value="Draft">Draft</MenuItem>
+              <MenuItem key="invited" value="Invited">Invited</MenuItem>
               <MenuItem key="active" value="Active">Active</MenuItem>
               <MenuItem key="suspended" value="Suspended">Suspended</MenuItem>
               <MenuItem key="archived" value="Archived">Archived</MenuItem>

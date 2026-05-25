@@ -5,7 +5,9 @@ public sealed class CustomerUseCase(
     IUnitOfWork unitOfWork,
     IClock clock,
     IEmailSender emailSender,
-    IOutboxPublisher outbox) : ICustomerService
+    IOutboxPublisher outbox,
+    IPasswordHasher passwordHasher,
+    IPortalLinkProvider portalLinks) : ICustomerService
 {
     public async Task<IReadOnlyList<CustomerDto>> GetCustomers(CancellationToken cancellationToken)
     {
@@ -86,20 +88,48 @@ public sealed class CustomerUseCase(
             ?? throw new KeyNotFoundException("Customer not found.");
         if (customer.AccountStatus is AccountStatus.Archived or AccountStatus.Suspended)
         {
-            throw new InvalidOperationException("Suspended or archived customers cannot receive invite emails.");
+            throw new ApiException(400, "customer_invite_blocked", "Suspended or archived customers cannot receive invite emails.");
+        }
+
+        if (HasPortalUser(customer))
+        {
+            throw new ApiException(400, "customer_already_invited", "This customer already has a portal account.");
+        }
+
+        var temporaryPassword = NormalizeTemporaryPassword(customer.Phone);
+        if (temporaryPassword.Length < 8)
+        {
+            throw new ApiException(400, "customer_invite_missing_contact", "Customer phone must contain at least 8 digits before an invite can be sent.");
+        }
+
+        var email = NormalizeEmail(customer.Email);
+        if (await customers.UserEmailExists(email, cancellationToken))
+        {
+            throw new ApiException(400, "customer_email_already_used", "A portal user with this email already exists.");
         }
 
         var oldValues = CustomerAuditValues(customer);
-        if (customer.AccountStatus == AccountStatus.Draft)
+        var now = clock.UtcNow;
+        var user = new User
         {
-            customer.AccountStatus = AccountStatus.Invited;
-        }
+            Id = Guid.NewGuid(),
+            Email = email,
+            PasswordHash = passwordHasher.Hash(temporaryPassword),
+            DisplayName = customer.BusinessName,
+            Role = UserRole.Customer,
+            CustomerId = customer.Id,
+            Customer = customer,
+            IsActive = true,
+            CreatedAt = now,
+            UpdatedAt = now
+        };
+        customers.AddUser(user);
 
         var subject = "Welcome to StoryCoffee";
         var emailLog = customers.AddEmailLog("CustomerInvite", customer.Id, customer.Email, subject, EmailStatus.Pending);
-        var message = new EmailMessage(customer.Email, subject, "Your StoryCoffee customer account is ready. Please sign in to manage your coffee orders.");
+        var message = new EmailMessage(customer.Email, subject, BuildInviteEmailBody(customer, email, temporaryPassword));
         var outboxMessage = outbox.EnqueueEmail(new OutboxEmailPayload("CustomerInvite", customer.Id, emailLog.Id, message.RecipientEmail, message.Subject, message.Body));
-        customers.AddAuditChange("SentCustomerInvite", "Customer", customer.Id, $"Sent invite email to {customer.Email}", oldValues, CustomerAuditValues(customer));
+        customers.AddAuditChange("SentCustomerInvite", "Customer", customer.Id, $"Created portal account and sent invite email to {customer.Email}", oldValues, CustomerAuditValues(customer));
         await unitOfWork.SaveChanges(cancellationToken);
 
         var sendResult = await emailSender.Send(message, cancellationToken);
@@ -203,6 +233,39 @@ public sealed class CustomerUseCase(
         return string.IsNullOrWhiteSpace(paymentTerms) ? "Net 14" : paymentTerms.Trim();
     }
 
+    private static bool HasPortalUser(Customer customer)
+    {
+        return customer.Users.Any(user => user.Role == UserRole.Customer && user.IsActive);
+    }
+
+    private static string NormalizeEmail(string? email)
+    {
+        return (email ?? "").Trim().ToLowerInvariant();
+    }
+
+    private static string NormalizeTemporaryPassword(string? phone)
+    {
+        return new string((phone ?? "").Where(char.IsDigit).ToArray());
+    }
+
+    private string BuildInviteEmailBody(Customer customer, string email, string temporaryPassword)
+    {
+        var contactName = string.IsNullOrWhiteSpace(customer.ContactPerson)
+            ? customer.BusinessName
+            : customer.ContactPerson;
+        return $"""
+            Hello {contactName},
+
+            Your StoryCoffee customer portal account has been created.
+
+            Login URL: {portalLinks.LoginUrl}
+            Email: {email}
+            Temporary password: {temporaryPassword}
+
+            Please change your password after your first login. Until you change it, this temporary password will remain valid.
+            """;
+    }
+
     private static object CustomerAuditValues(Customer customer)
     {
         return new
@@ -214,7 +277,8 @@ public sealed class CustomerUseCase(
             customer.BillingAddress,
             customer.DeliveryAddress,
             customer.PaymentTerms,
-            customer.AccountStatus
+            customer.AccountStatus,
+            HasPortalUser = HasPortalUser(customer)
         };
     }
 

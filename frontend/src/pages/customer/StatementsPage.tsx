@@ -1,24 +1,17 @@
 import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Divider } from '@mui/material';
 import { Download, Visibility } from '@mui/icons-material';
-import { toast } from 'sonner';
 import { useCustomerStatementsQuery } from '@/entities/statement/api/statementQueries';
-import { downloadCustomerStatementPdf } from '@/features/statementActions/api/statementActionsApi';
+import { useDownloadStatementPdfMutation } from '@/features/statementActions/model/statementActionsMutations';
 import { Link } from 'react-router';
 import { LoadingState } from '@/shared/ui/LoadingState';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { EmptyState } from '@/shared/ui/EmptyState';
+import { formatInvoiceStatus, getInvoiceStatusColor } from '@/shared/status/statusFormat';
+import { StatusChip } from '@/shared/ui/StatusChip';
 
 export default function CustomerStatements() {
   const { data: statements = [], isLoading, error } = useCustomerStatementsQuery();
-
-  const handleDownload = async (statementId: string) => {
-    try {
-      await downloadCustomerStatementPdf(statementId);
-      toast.success('Downloading statement');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to download statement');
-    }
-  };
+  const downloadStatementMutation = useDownloadStatementPdfMutation('customer');
 
   if (isLoading) {
     return <LoadingState />;
@@ -60,7 +53,15 @@ export default function CustomerStatements() {
                 >
                   View Details
                 </Button>
-                <Button variant="outlined" startIcon={<Download />} onClick={() => handleDownload(statement.id)}>
+                <Button
+                  variant="outlined"
+                  startIcon={<Download />}
+                  onClick={() => downloadStatementMutation.mutate({
+                    statementId: statement.id,
+                    statementNumber: statement.statementNumber,
+                  })}
+                  disabled={downloadStatementMutation.isPending && downloadStatementMutation.variables?.statementId === statement.id}
+                >
                   Download PDF
                 </Button>
               </Box>
@@ -86,7 +87,9 @@ export default function CustomerStatements() {
                       <TableCell>{invoice.issueDate.toLocaleDateString()}</TableCell>
                       <TableCell>{invoice.dueDate.toLocaleDateString()}</TableCell>
                       <TableCell align="right">${invoice.outstandingAmount.toFixed(2)}</TableCell>
-                      <TableCell>{invoice.status}</TableCell>
+                      <TableCell>
+                        <StatusChip label={formatInvoiceStatus(invoice.status)} color={getInvoiceStatusColor(invoice.status)} />
+                      </TableCell>
                     </TableRow>
                   ))}
                   <TableRow>

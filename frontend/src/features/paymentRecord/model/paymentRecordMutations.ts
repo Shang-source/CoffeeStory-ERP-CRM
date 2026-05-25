@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Invoice } from '@/entities/types';
 import { queryKeys } from '@/shared/api/queryKeys';
+import { invalidateInvoiceState } from '@/shared/api/invalidateBusinessState';
 import { recordInvoicePayment, type RecordPaymentInput, voidInvoicePayment } from '@/features/paymentRecord/api/paymentRecordApi';
 
 interface RecordPaymentMutationInput {
@@ -25,10 +26,11 @@ export function useRecordInvoicePaymentMutation(onRecorded?: () => void) {
 
   return useMutation({
     mutationFn: ({ invoiceId, payload }: RecordPaymentMutationInput) => recordInvoicePayment(invoiceId, payload),
-    onSuccess: (updatedInvoice, variables) => {
+    onSuccess: async (updatedInvoice, variables) => {
       queryClient.setQueryData<Invoice[]>(queryKeys.adminInvoices, (currentInvoices = []) =>
         updateInvoiceCache(currentInvoices, updatedInvoice)
       );
+      await invalidateInvoiceState(queryClient);
       toast.success(`Payment of $${variables.amountLabel} recorded for invoice ${updatedInvoice.invoiceNumber}`);
       onRecorded?.();
     },
@@ -42,10 +44,11 @@ export function useVoidInvoicePaymentMutation() {
   return useMutation({
     mutationFn: ({ invoiceId, paymentId, reason }: VoidPaymentMutationInput) =>
       voidInvoicePayment(invoiceId, paymentId, reason),
-    onSuccess: (updatedInvoice) => {
+    onSuccess: async (updatedInvoice) => {
       queryClient.setQueryData<Invoice[]>(queryKeys.adminInvoices, (currentInvoices = []) =>
         updateInvoiceCache(currentInvoices, updatedInvoice)
       );
+      await invalidateInvoiceState(queryClient);
       toast.success('Payment voided');
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : 'Unable to void payment'),

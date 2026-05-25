@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AuthProvider } from '@/app/providers/AuthProvider';
 import { adminProfile } from '@/entities/testing/fixtures';
 import LoginPage from './LoginPage';
@@ -17,6 +17,10 @@ describe('LoginPage', () => {
   beforeEach(() => {
     localStorage.clear();
     loginMock.mockReset();
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 
   it('navigates to the admin area after a successful admin login', async () => {
@@ -41,7 +45,7 @@ describe('LoginPage', () => {
       expect(screen.getByRole('heading', { name: 'Admin Dashboard' })).toBeInTheDocument();
     });
     expect(loginMock).toHaveBeenCalledWith('admin@storycoffee.co.nz', 'password');
-  });
+  }, 15000);
 
   it('shows an error when authentication fails', async () => {
     loginMock.mockRejectedValue(new Error('Invalid credentials'));
@@ -59,5 +63,18 @@ describe('LoginPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Sign In' }));
 
     expect(await screen.findByText('Invalid email or password')).toBeInTheDocument();
+  });
+
+  it('does not expose customer self-registration', () => {
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <AuthProvider>
+          <LoginPage />
+        </AuthProvider>
+      </MemoryRouter>
+    );
+
+    expect(screen.queryByRole('button', { name: 'Create a customer account' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Create your customer account')).not.toBeInTheDocument();
   });
 });

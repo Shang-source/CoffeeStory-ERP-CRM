@@ -7,13 +7,16 @@ public sealed class EfCustomerRepository(AppDbContext db, IClock clock) : ICusto
     public async Task<IReadOnlyList<Customer>> GetCustomers(CancellationToken cancellationToken)
     {
         return await db.Customers
+            .Include(customer => customer.Users)
             .OrderBy(customer => customer.BusinessName)
             .ToListAsync(cancellationToken);
     }
 
     public Task<Customer?> GetCustomer(Guid customerId, CancellationToken cancellationToken)
     {
-        return db.Customers.FirstOrDefaultAsync(customer => customer.Id == customerId, cancellationToken);
+        return db.Customers
+            .Include(customer => customer.Users)
+            .FirstOrDefaultAsync(customer => customer.Id == customerId, cancellationToken);
     }
 
     public Task<bool> CustomerEmailExists(Guid? excludingCustomerId, string email, CancellationToken cancellationToken)
@@ -21,6 +24,12 @@ public sealed class EfCustomerRepository(AppDbContext db, IClock clock) : ICusto
         return db.Customers.AnyAsync(customer =>
             (!excludingCustomerId.HasValue || customer.Id != excludingCustomerId.Value) &&
             customer.Email == email, cancellationToken);
+    }
+
+    public Task<bool> UserEmailExists(string email, CancellationToken cancellationToken)
+    {
+        var normalizedEmail = NormalizeEmail(email);
+        return db.Users.AnyAsync(user => user.Email.ToLower() == normalizedEmail, cancellationToken);
     }
 
     public async Task<CustomerArchiveBlockers> GetArchiveBlockers(Guid customerId, CancellationToken cancellationToken)
@@ -45,6 +54,11 @@ public sealed class EfCustomerRepository(AppDbContext db, IClock clock) : ICusto
         db.Customers.Add(customer);
     }
 
+    public void AddUser(User user)
+    {
+        db.Users.Add(user);
+    }
+
     public void AddAuditChange(string action, string entityType, Guid? entityId, string message, object? oldValues, object? newValues)
     {
         db.AddAuditChange(action, entityType, entityId, message, oldValues, newValues);
@@ -65,5 +79,10 @@ public sealed class EfCustomerRepository(AppDbContext db, IClock clock) : ICusto
         };
         db.EmailLogs.Add(log);
         return log;
+    }
+
+    private static string NormalizeEmail(string? email)
+    {
+        return (email ?? "").Trim().ToLowerInvariant();
     }
 }

@@ -52,6 +52,112 @@ public sealed class ApiIntegrationTests(TestingWebAppFactory factory) : IClassFi
     }
 
     [Fact]
+    public async Task CustomerPortalLoginRequiresAdminInvite()
+    {
+        var adminClient = factory.CreateClient();
+        var adminLogin = await Login(adminClient, "admin@storycoffee.co.nz");
+        adminClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminLogin.AccessToken);
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var email = $"invite-login.{suffix}@storycoffee.co.nz";
+        var phone = "+64 9 555 7600";
+        var password = "6495557600";
+        var createResponse = await adminClient.PostAsJsonAsync("/api/admin/customers", new CreateCustomerRequest(
+            $"Invited Cafe {suffix}",
+            "Riley Invite",
+            email,
+            phone,
+            "22 Register Street, Auckland",
+            "22 Register Street, Auckland",
+            "Net 14",
+            AccountStatus.Draft));
+        createResponse.EnsureSuccessStatusCode();
+        var created = await createResponse.Content.ReadFromJsonAsync<CustomerDto>();
+
+        var loginBeforeInvite = await factory.CreateClient().PostAsJsonAsync("/api/auth/login", new LoginRequest(email, password));
+        var inviteResponse = await adminClient.PostAsync($"/api/admin/customers/{created!.Id}/send-invite", null);
+        inviteResponse.EnsureSuccessStatusCode();
+        var invited = await inviteResponse.Content.ReadFromJsonAsync<CustomerDto>();
+        var duplicateInviteResponse = await adminClient.PostAsync($"/api/admin/customers/{created.Id}/send-invite", null);
+        var duplicateInviteError = await duplicateInviteResponse.Content.ReadFromJsonAsync<ApiError>();
+        var customerClient = factory.CreateClient();
+        var login = await Login(customerClient, email, password);
+        customerClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.AccessToken);
+        var profile = await customerClient.GetFromJsonAsync<CustomerDto>("/api/customer/profile");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, loginBeforeInvite.StatusCode);
+        Assert.Equal(AccountStatus.Draft, invited!.AccountStatus);
+        Assert.True(invited.HasPortalUser);
+        Assert.Equal(HttpStatusCode.BadRequest, duplicateInviteResponse.StatusCode);
+        Assert.Equal("customer_already_invited", duplicateInviteError!.Code);
+        Assert.Equal(UserRole.Customer, login.Role);
+        Assert.Equal(created.Id, login.UserProfile.CustomerId);
+        Assert.Equal(email, login.UserProfile.Email);
+        Assert.Equal(created.Id, profile!.Id);
+        Assert.True(profile.HasPortalUser);
+
+        var archiveResponse = await adminClient.PatchAsJsonAsync($"/api/admin/customers/{created.Id}", new UpdateCustomerRequest(
+            created.BusinessName,
+            created.ContactPerson,
+            created.Email,
+            created.Phone,
+            created.BillingAddress,
+            created.DeliveryAddress,
+            created.PaymentTerms,
+            AccountStatus.Archived));
+        archiveResponse.EnsureSuccessStatusCode();
+        var archivedLoginResponse = await factory.CreateClient().PostAsJsonAsync("/api/auth/login", new LoginRequest(email, password));
+        Assert.Equal(HttpStatusCode.Forbidden, archivedLoginResponse.StatusCode);
+
+        var reactivateResponse = await adminClient.PatchAsJsonAsync($"/api/admin/customers/{created.Id}", new UpdateCustomerRequest(
+            created.BusinessName,
+            created.ContactPerson,
+            created.Email,
+            created.Phone,
+            created.BillingAddress,
+            created.DeliveryAddress,
+            created.PaymentTerms,
+            AccountStatus.Active));
+        reactivateResponse.EnsureSuccessStatusCode();
+        var reactivatedLogin = await Login(factory.CreateClient(), email, password);
+        Assert.Equal(created.Id, reactivatedLogin.UserProfile.CustomerId);
+    }
+
+    [Fact]
+    public async Task InvitedCustomerBecomesActiveAfterSuccessfulLogin()
+    {
+        var adminClient = factory.CreateClient();
+        var adminLogin = await Login(adminClient, "admin@storycoffee.co.nz");
+        adminClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminLogin.AccessToken);
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var email = $"invited-active.{suffix}@storycoffee.co.nz";
+        var phone = "+64 9 555 7700";
+        var password = "6495557700";
+        var createResponse = await adminClient.PostAsJsonAsync("/api/admin/customers", new CreateCustomerRequest(
+            $"First Login Cafe {suffix}",
+            "Ari Login",
+            email,
+            phone,
+            "24 Register Street, Auckland",
+            "24 Register Street, Auckland",
+            "Net 14",
+            AccountStatus.Invited));
+        createResponse.EnsureSuccessStatusCode();
+        var created = await createResponse.Content.ReadFromJsonAsync<CustomerDto>();
+        var inviteResponse = await adminClient.PostAsync($"/api/admin/customers/{created!.Id}/send-invite", null);
+        inviteResponse.EnsureSuccessStatusCode();
+
+        var customerClient = factory.CreateClient();
+        var login = await Login(customerClient, email, password);
+        customerClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.AccessToken);
+        var profile = await customerClient.GetFromJsonAsync<CustomerDto>("/api/customer/profile");
+
+        Assert.Equal(AccountStatus.Active, profile!.AccountStatus);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.Contains(await db.AuditLogs.ToListAsync(), log => log.Action == "ActivatedCustomerOnLogin" && log.EntityId == created.Id);
+    }
+
+    [Fact]
     public async Task CustomerOrderRead_IsRestrictedToOwnCustomer()
     {
         var client = factory.CreateClient();
@@ -106,6 +212,8 @@ public sealed class ApiIntegrationTests(TestingWebAppFactory factory) : IClassFi
         var statementDetail = await client.GetFromJsonAsync<StatementDto>($"/api/customer/statements/{ownStatement.Id}");
         var otherInvoiceResponse = await client.GetAsync($"/api/customer/invoices/{otherCustomerInvoice.Id}");
         var otherStatementResponse = await client.GetAsync($"/api/customer/statements/{otherCustomerStatementId}");
+        var otherInvoiceDownloadResponse = await client.GetAsync($"/api/customer/invoices/{otherCustomerInvoice.Id}/download-url");
+        var otherStatementDownloadResponse = await client.GetAsync($"/api/customer/statements/{otherCustomerStatementId}/download-url");
 
         Assert.Equal(ownInvoice.Id, invoiceDetail!.Id);
         Assert.Equal(login.UserProfile.CustomerId, invoiceDetail.CustomerId);
@@ -115,6 +223,10 @@ public sealed class ApiIntegrationTests(TestingWebAppFactory factory) : IClassFi
         Assert.NotEmpty(statementDetail.Invoices);
         Assert.Equal(HttpStatusCode.NotFound, otherInvoiceResponse.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, otherStatementResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, otherInvoiceDownloadResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, otherStatementDownloadResponse.StatusCode);
+        await AssertPdfDownload(client, $"/api/customer/invoices/{ownInvoice.Id}/download-url");
+        await AssertPdfDownload(client, $"/api/customer/statements/{ownStatement.Id}/download-url");
     }
 
     private async Task<InvoiceDto> CreateOtherCustomerInvoice()
@@ -265,7 +377,39 @@ public sealed class ApiIntegrationTests(TestingWebAppFactory factory) : IClassFi
     }
 
     [Fact]
-    public async Task AdminCanDownloadInvoicePdf()
+    public async Task AdminPaymentUpdatesCustomerInvoiceAndOrderStatus()
+    {
+        var adminClient = factory.CreateClient();
+        var adminLogin = await Login(adminClient, "admin@storycoffee.co.nz");
+        adminClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", adminLogin.AccessToken);
+        var adminInvoices = await adminClient.GetFromJsonAsync<List<InvoiceDto>>("/api/admin/invoices");
+        var invoice = adminInvoices!.First(invoice => invoice.CustomerId == SeedData.AucklandCustomerId && invoice.Status == InvoiceStatus.Unpaid);
+
+        var response = await adminClient.PostAsJsonAsync($"/api/admin/invoices/{invoice.Id}/payments", new RecordPaymentRequest(
+            invoice.OutstandingAmount,
+            DateTimeOffset.UtcNow,
+            "BankTransfer",
+            "SYNC-TEST",
+            "Paid in full"));
+
+        response.EnsureSuccessStatusCode();
+        var payment = await response.Content.ReadFromJsonAsync<PaymentResponse>();
+        var adminOrders = await adminClient.GetFromJsonAsync<List<OrderDto>>("/api/admin/orders");
+        var customerClient = factory.CreateClient();
+        var customerLogin = await Login(customerClient, "john@aucklandcafe.co.nz");
+        customerClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", customerLogin.AccessToken);
+        var customerInvoices = await customerClient.GetFromJsonAsync<List<InvoiceDto>>("/api/customer/invoices");
+        var customerOrders = await customerClient.GetFromJsonAsync<List<OrderDto>>("/api/customer/orders");
+
+        Assert.Equal(InvoiceStatus.Paid, payment!.Invoice.Status);
+        Assert.Equal(0, payment.Invoice.OutstandingAmount);
+        Assert.Contains(adminOrders!, order => order.Id == invoice.OrderId && order.InvoiceStatus == InvoiceStatus.Paid && order.OrderStatus == OrderStatus.Completed);
+        Assert.Contains(customerInvoices!, customerInvoice => customerInvoice.Id == invoice.Id && customerInvoice.Status == InvoiceStatus.Paid && customerInvoice.OutstandingAmount == 0);
+        Assert.Contains(customerOrders!, order => order.Id == invoice.OrderId && order.InvoiceStatus == InvoiceStatus.Paid && order.OrderStatus == OrderStatus.Completed);
+    }
+
+    [Fact]
+    public async Task AdminCanDownloadInvoiceAndStatementPdfs()
     {
         var client = factory.CreateClient();
         var login = await Login(client, "admin@storycoffee.co.nz");
@@ -273,13 +417,14 @@ public sealed class ApiIntegrationTests(TestingWebAppFactory factory) : IClassFi
         var invoices = await client.GetFromJsonAsync<List<InvoiceDto>>("/api/admin/invoices");
         var invoice = invoices!.First();
 
-        var metadataResponse = await client.GetAsync($"/api/admin/invoices/{invoice.Id}/download-url");
-        metadataResponse.EnsureSuccessStatusCode();
-        var metadata = await metadataResponse.Content.ReadFromJsonAsync<PdfDownloadDto>();
-        var pdfResponse = await client.GetAsync(metadata!.DownloadUrl);
+        await AssertPdfDownload(client, $"/api/admin/invoices/{invoice.Id}/download-url");
 
-        pdfResponse.EnsureSuccessStatusCode();
-        Assert.Equal("application/pdf", pdfResponse.Content.Headers.ContentType?.MediaType);
+        var statementResponse = await client.PostAsync("/api/admin/statements/generate-weekly", null);
+        statementResponse.EnsureSuccessStatusCode();
+        var statements = await client.GetFromJsonAsync<List<StatementDto>>("/api/admin/statements");
+        var statement = statements!.First();
+
+        await AssertPdfDownload(client, $"/api/admin/statements/{statement.Id}/download-url");
     }
 
     [Fact]
@@ -292,10 +437,6 @@ public sealed class ApiIntegrationTests(TestingWebAppFactory factory) : IClassFi
         var readyOrder = orders!.First(order => order.OrderStatus == OrderStatus.ReadyToShip);
         var shipResponse = await client.PostAsync($"/api/admin/orders/{readyOrder.Id}/mark-shipped", null);
         shipResponse.EnsureSuccessStatusCode();
-        var invoices = await client.GetFromJsonAsync<List<InvoiceDto>>("/api/admin/invoices");
-        var draftInvoice = invoices!.First(invoice => invoice.OrderId == readyOrder.Id);
-        var sendResponse = await client.PostAsync($"/api/admin/invoices/{draftInvoice.Id}/send-email", null);
-        sendResponse.EnsureSuccessStatusCode();
 
         var auditLogs = await client.GetFromJsonAsync<PagedResult<AuditLogDto>>("/api/admin/logs/audit?action=SentInvoiceEmail&page=1&pageSize=10");
         var emailLogs = await client.GetFromJsonAsync<PagedResult<EmailLogDto>>("/api/admin/logs/email?status=Sent&entityType=Invoice&page=1&pageSize=10");
@@ -309,6 +450,27 @@ public sealed class ApiIntegrationTests(TestingWebAppFactory factory) : IClassFi
         Assert.Contains(emailLogs.Items, log => log.RelatedEntityType == "Invoice");
         exportResponse.EnsureSuccessStatusCode();
         Assert.Equal("text/csv", exportResponse.Content.Headers.ContentType?.MediaType);
+    }
+
+    [Fact]
+    public async Task AdminMarkShipped_UsesEmailWorkflow()
+    {
+        var client = factory.CreateClient();
+        var login = await Login(client, "admin@storycoffee.co.nz");
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.AccessToken);
+        var orders = await client.GetFromJsonAsync<List<OrderDto>>("/api/admin/orders");
+        var readyOrder = orders!.First(order => order.OrderStatus == OrderStatus.ReadyToShip);
+        var shipResponse = await client.PostAsync($"/api/admin/orders/{readyOrder.Id}/mark-shipped", null);
+        shipResponse.EnsureSuccessStatusCode();
+        var updatedOrder = await shipResponse.Content.ReadFromJsonAsync<OrderDto>();
+
+        Assert.Equal(InvoiceStatus.Unpaid, updatedOrder!.InvoiceStatus);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var invoice = await db.Invoices.SingleAsync(x => x.OrderId == readyOrder.Id);
+        Assert.Equal(InvoiceStatus.Unpaid, invoice.Status);
+        Assert.Equal(EmailStatus.Sent, invoice.EmailStatus);
+        Assert.Contains(await db.EmailLogs.ToListAsync(), log => log.RelatedEntityType == "Invoice" && log.RelatedEntityId == invoice.Id && log.Status == EmailStatus.Sent);
     }
 
     [Fact]
@@ -482,6 +644,19 @@ public sealed class ApiIntegrationTests(TestingWebAppFactory factory) : IClassFi
         Assert.Equal("customer_account_inactive", error!.Code);
         Assert.Equal(HttpStatusCode.Forbidden, loginResponse.StatusCode);
         Assert.Equal("customer_account_inactive", loginError!.Code);
+
+        var reactivateResponse = await adminClient.PatchAsJsonAsync($"/api/admin/customers/{SeedData.AucklandCustomerId}", new UpdateCustomerRequest(
+            "Auckland Cafe",
+            "John Smith",
+            "john@aucklandcafe.co.nz",
+            "+64 9 555 0101",
+            "12 Queen Street, Auckland 1010",
+            "12 Queen Street, Auckland 1010",
+            "Net 14",
+            AccountStatus.Active));
+        reactivateResponse.EnsureSuccessStatusCode();
+        var restoredLogin = await Login(factory.CreateClient(), "john@aucklandcafe.co.nz", "password");
+        Assert.Equal(UserRole.Customer, restoredLogin.Role);
     }
 
     [Fact]
@@ -510,7 +685,8 @@ public sealed class ApiIntegrationTests(TestingWebAppFactory factory) : IClassFi
         await using var verifyScope = factory.Services.CreateAsyncScope();
         var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        Assert.Equal(AccountStatus.Invited, invited!.AccountStatus);
+        Assert.Equal(AccountStatus.Draft, invited!.AccountStatus);
+        Assert.True(invited.HasPortalUser);
         Assert.NotNull(dashboard);
         Assert.True(dashboard.Metrics.TotalCustomerCount >= 3);
         Assert.Contains(await verifyDb.EmailLogs.ToListAsync(), log => log.RelatedEntityType == "CustomerInvite" && log.RelatedEntityId == created.Id);
@@ -833,6 +1009,21 @@ public sealed class ApiIntegrationTests(TestingWebAppFactory factory) : IClassFi
         var client = factory.CreateClient();
         var login = await Login(client, "admin@storycoffee.co.nz");
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.AccessToken);
+        var existingBatchId = Guid.NewGuid();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.ProductionBatches.Add(new ProductionBatch
+            {
+                Id = existingBatchId,
+                BatchNumber = $"PB-INTEGRATION-{Guid.NewGuid():N}",
+                ProductionPeriod = "2026-W20",
+                Status = ProductionBatchStatus.InProgress,
+                CreatedAt = DateTimeOffset.UtcNow.AddHours(-1),
+                UpdatedAt = DateTimeOffset.UtcNow.AddHours(-1)
+            });
+            await db.SaveChangesAsync();
+        }
         var orders = await client.GetFromJsonAsync<List<OrderDto>>("/api/admin/orders");
         var generatedOrder = orders!.First(order => order.OrderStatus == OrderStatus.Generated);
 
@@ -843,6 +1034,41 @@ public sealed class ApiIntegrationTests(TestingWebAppFactory factory) : IClassFi
         Assert.Equal(1, result!.Updated);
         Assert.Contains(result.Orders, order => order.Id == generatedOrder.Id && order.OrderStatus == OrderStatus.InProduction);
         Assert.Equal(ProductionBatchStatus.Open, result.ProductionBatch.Status);
+        Assert.NotEqual(existingBatchId, result.ProductionBatch.Id);
+    }
+
+    [Fact]
+    public async Task AdminBatchToProduction_AppendsNewItemsToExistingOpenBatch()
+    {
+        var client = factory.CreateClient();
+        var login = await Login(client, "admin@storycoffee.co.nz");
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.AccessToken);
+        var openBatchId = Guid.NewGuid();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.ProductionBatches.Add(new ProductionBatch
+            {
+                Id = openBatchId,
+                BatchNumber = $"PB-OPEN-{Guid.NewGuid():N}",
+                ProductionPeriod = "2026-W20",
+                Status = ProductionBatchStatus.Open,
+                CreatedAt = DateTimeOffset.UtcNow.AddHours(-1),
+                UpdatedAt = DateTimeOffset.UtcNow.AddHours(-1)
+            });
+            await db.SaveChangesAsync();
+        }
+        var orders = await client.GetFromJsonAsync<List<OrderDto>>("/api/admin/orders");
+        var generatedOrder = orders!.First(order => order.OrderStatus == OrderStatus.Generated);
+
+        var response = await client.PostAsJsonAsync("/api/admin/orders/batch-to-production", new BatchToProductionRequest([generatedOrder.Id]));
+
+        response.EnsureSuccessStatusCode();
+        var result = await response.Content.ReadFromJsonAsync<BatchToProductionResponse>();
+        Assert.Equal(openBatchId, result!.ProductionBatch.Id);
+        await using var verifyScope = factory.Services.CreateAsyncScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Assert.True(await verifyDb.ProductionItems.AnyAsync(item => item.ProductionBatchId == openBatchId));
     }
 
     [Fact]
@@ -984,6 +1210,22 @@ public sealed class ApiIntegrationTests(TestingWebAppFactory factory) : IClassFi
     private static async Task<LoginResponse> Login(HttpClient client, string email)
     {
         return await Login(client, email, "password");
+    }
+
+    private static async Task AssertPdfDownload(HttpClient client, string metadataPath)
+    {
+        var metadataResponse = await client.GetAsync(metadataPath);
+        metadataResponse.EnsureSuccessStatusCode();
+        var metadata = await metadataResponse.Content.ReadFromJsonAsync<PdfDownloadDto>();
+
+        Assert.NotNull(metadata);
+        Assert.StartsWith("/api/files/download?", metadata!.DownloadUrl);
+        Assert.EndsWith(".pdf", metadata.FileName);
+
+        var pdfResponse = await client.GetAsync(metadata.DownloadUrl);
+        pdfResponse.EnsureSuccessStatusCode();
+        Assert.Equal("application/pdf", pdfResponse.Content.Headers.ContentType?.MediaType);
+        Assert.True((await pdfResponse.Content.ReadAsByteArrayAsync()).Length > 0);
     }
 
     private static async Task<LoginResponse> Login(HttpClient client, string email, string password)

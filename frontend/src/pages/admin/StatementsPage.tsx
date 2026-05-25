@@ -1,16 +1,17 @@
 import { useNavigate } from 'react-router';
-import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, Chip, IconButton, Alert, CircularProgress } from '@mui/material';
+import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, IconButton, Alert, CircularProgress } from '@mui/material';
 import { Add, Visibility, Send, Download } from '@mui/icons-material';
-import { toast } from 'sonner';
 import { useAdminStatementsQuery } from '@/entities/statement/api/statementQueries';
-import { downloadAdminStatementPdf } from '@/features/statementActions/api/statementActionsApi';
-import { useGenerateWeeklyStatementsMutation, useSendStatementEmailMutation } from '@/features/statementActions/model/statementActionsMutations';
+import { useDownloadStatementPdfMutation, useGenerateWeeklyStatementsMutation, useSendStatementEmailMutation } from '@/features/statementActions/model/statementActionsMutations';
+import { formatEmailStatus, formatStatementStatus, getEmailStatusColor, getStatementStatusColor } from '@/shared/status/statusFormat';
+import { StatusChip } from '@/shared/ui/StatusChip';
 
 export default function Statements() {
   const navigate = useNavigate();
   const { data: statements = [], isLoading, error } = useAdminStatementsQuery();
   const generateWeeklyMutation = useGenerateWeeklyStatementsMutation();
   const sendEmailMutation = useSendStatementEmailMutation();
+  const downloadStatementMutation = useDownloadStatementPdfMutation('admin');
 
   const handleGenerateWeekly = () => {
     generateWeeklyMutation.mutate();
@@ -19,16 +20,6 @@ export default function Statements() {
   const handleSendEmail = (statementId: string, event: React.MouseEvent) => {
     event.stopPropagation();
     sendEmailMutation.mutate(statementId);
-  };
-
-  const handleDownload = async (statementId: string, event: React.MouseEvent) => {
-    event.stopPropagation();
-    try {
-      await downloadAdminStatementPdf(statementId);
-      toast.success('Downloading statement PDF');
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to download statement');
-    }
   };
 
   const handleViewDetails = (statementId: string) => {
@@ -104,10 +95,10 @@ export default function Statements() {
                     </TableCell>
                     <TableCell align="right">${statement.totalOutstanding.toFixed(2)}</TableCell>
                     <TableCell>
-                      <Chip label={statement.status} size="small" color={statement.status === 'Sent' ? 'success' : 'default'} />
+                      <StatusChip label={formatStatementStatus(statement.status)} color={getStatementStatusColor(statement.status)} />
                     </TableCell>
                     <TableCell>
-                      <Chip label={statement.emailStatus} size="small" color={statement.emailStatus === 'Sent' ? 'success' : 'default'} />
+                      <StatusChip label={formatEmailStatus(statement.emailStatus)} color={getEmailStatusColor(statement.emailStatus)} />
                     </TableCell>
                     <TableCell align="center">
                       <IconButton
@@ -128,7 +119,18 @@ export default function Statements() {
                       >
                         <Send />
                       </IconButton>
-                      <IconButton size="small" onClick={(e) => handleDownload(statement.id, e)} title="Download PDF">
+                      <IconButton
+                        size="small"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          downloadStatementMutation.mutate({
+                            statementId: statement.id,
+                            statementNumber: statement.statementNumber,
+                          });
+                        }}
+                        disabled={downloadStatementMutation.isPending && downloadStatementMutation.variables?.statementId === statement.id}
+                        title="Download PDF"
+                      >
                         <Download />
                       </IconButton>
                     </TableCell>

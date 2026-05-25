@@ -14,6 +14,7 @@ public static class CustomerMapping
             customer.DeliveryAddress,
             customer.PaymentTerms,
             customer.AccountStatus,
+            customer.Users.Any(user => user.Role == UserRole.Customer && user.IsActive),
             customer.CreatedAt);
     }
 }

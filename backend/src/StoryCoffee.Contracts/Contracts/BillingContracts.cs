@@ -65,4 +65,56 @@ public sealed record PdfDocumentResult(
     string FileName,
     string FileKey,
     DateTimeOffset GeneratedAt,
-    IReadOnlyList<string> Lines);
+    IReadOnlyList<string> Lines,
+    InvoicePdfDocument? Invoice = null,
+    StatementPdfDocument? Statement = null);
+
+public sealed record CompanyDocumentProfile(
+    string Name,
+    string PostalAddressLine1,
+    string PostalAddressLine2,
+    string Country,
+    string Website,
+    string GstNumber,
+    string BankName,
+    string BankAccountNumber);
+
+public sealed record InvoicePdfDocument(
+    CompanyDocumentProfile Company,
+    string InvoiceNumber,
+    string CustomerName,
+    string CustomerEmail,
+    string BillingAddress,
+    DateTimeOffset IssueDate,
+    DateTimeOffset DueDate,
+    decimal Subtotal,
+    decimal GstAmount,
+    decimal TotalAmount,
+    decimal AmountDue,
+    IReadOnlyList<InvoicePdfItem> Items);
+
+public sealed record InvoicePdfItem(
+    string Description,
+    string? Note,
+    int Quantity,
+    decimal UnitPrice,
+    decimal LineTotal);
+
+public sealed record StatementPdfDocument(
+    CompanyDocumentProfile Company,
+    string StatementNumber,
+    string CustomerName,
+    string BillingAddress,
+    DateTimeOffset StatementDate,
+    DateTimeOffset? PeriodStart,
+    DateTimeOffset? PeriodEnd,
+    decimal TotalOutstanding,
+    IReadOnlyList<StatementInvoicePdfLine> Invoices);
+
+public sealed record StatementInvoicePdfLine(
+    string InvoiceNumber,
+    DateTimeOffset IssueDate,
+    DateTimeOffset DueDate,
+    decimal TotalAmount,
+    decimal OutstandingAmount,
+    InvoiceStatus Status);

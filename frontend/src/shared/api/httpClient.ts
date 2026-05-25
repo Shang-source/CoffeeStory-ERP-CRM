@@ -60,7 +60,7 @@ export async function requestNoContent(path: string, init: RequestInit = {}) {
 }
 
 export async function downloadExternalBlob(url: string, fileName: string) {
-  await saveBlobResponse(await fetch(url), fileName);
+  await saveBlobResponse(await fetch(resolveDownloadUrl(url)), fileName);
 }
 
 async function saveBlobResponse(response: Response, fileName: string) {
@@ -89,4 +89,12 @@ function withAuthHeaders(init: RequestInit = {}, includeJsonContentType = true):
       ...init.headers,
     },
   };
+}
+
+function resolveDownloadUrl(url: string) {
+  if (url.startsWith('/')) {
+    return `${window.location.origin}${url}`;
+  }
+
+  return url;
 }

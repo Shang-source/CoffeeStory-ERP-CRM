@@ -39,6 +39,16 @@ public sealed class EfBillingRepository(AppDbContext db, IClock clock) : IBillin
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<Statement>> GetEditableStatementsForCustomer(Guid customerId, CancellationToken cancellationToken)
+    {
+        return await db.Statements
+            .Include(statement => statement.Invoices)
+            .Where(statement =>
+                statement.CustomerId == customerId &&
+                (statement.Status == StatementStatus.Draft || statement.Status == StatementStatus.ReadyToSend))
+            .ToListAsync(cancellationToken);
+    }
+
     public void AddPayment(PaymentRecord payment)
     {
         db.PaymentRecords.Add(payment);

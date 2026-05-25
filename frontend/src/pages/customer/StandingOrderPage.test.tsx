@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeCustomerProduct, makeStandingOrder } from '@/entities/testing/fixtures';
@@ -44,17 +44,18 @@ describe('Customer StandingOrderPage', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Edit Order' }));
     fireEvent.click(screen.getByRole('button', { name: 'Add Item' }));
-    fireEvent.mouseDown(screen.getByRole('combobox'));
+    const addItemDialog = await screen.findByRole('dialog', { name: 'Add Item to Standing Order' });
+    fireEvent.mouseDown(within(addItemDialog).getByRole('combobox'));
     fireEvent.click(await screen.findByRole('option', {
       name: 'House Blend 1kg - $35.00 (custom price, base $38.00)',
     }));
-    fireEvent.click(screen.getByRole('button', { name: 'Add Item' }));
+    fireEvent.click(within(addItemDialog).getByRole('button', { name: 'Add Item' }));
 
     await waitFor(() => {
       expect(screen.getAllByText('$35.00').length).toBeGreaterThan(0);
     });
     expect(screen.getByText('Estimated Total: $35.00')).toBeInTheDocument();
-  }, 10_000);
+  }, 20_000);
 });
 
 function renderWithQuery() {

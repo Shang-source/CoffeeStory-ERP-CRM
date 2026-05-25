@@ -27,6 +27,7 @@ export function makeCustomer(overrides: Partial<Customer> = {}): Customer {
     deliveryAddress: '1 Queen Street, Auckland',
     paymentTerms: 'Net 14',
     accountStatus: 'Active',
+    hasPortalUser: true,
     createdAt: new Date('2026-05-01T00:00:00Z'),
     ...overrides,
   };

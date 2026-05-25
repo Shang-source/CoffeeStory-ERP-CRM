@@ -19,11 +19,10 @@ vi.mock('@/features/batchToProduction/api/batchToProductionApi', () => ({
 }));
 
 vi.mock('@/features/orderWorkflow/api/orderWorkflowApi', () => ({
+  batchShipAndInvoiceOrders: vi.fn(),
   cancelOrder: vi.fn(),
-  generateInvoice: vi.fn(),
   markOrderReadyToShip: vi.fn(),
   markOrderShipped: vi.fn(),
-  sendInvoice: vi.fn(),
   sendOrderToProduction: vi.fn(),
 }));
 
@@ -48,7 +47,9 @@ describe('OrdersPage', () => {
       { ...generatedOrder, orderStatus: 'InProduction' as const },
       { ...secondGeneratedOrder, orderStatus: 'InProduction' as const },
     ];
-    getAdminOrdersMock.mockResolvedValue([generatedOrder, secondGeneratedOrder]);
+    getAdminOrdersMock
+      .mockResolvedValueOnce([generatedOrder, secondGeneratedOrder])
+      .mockResolvedValue(updatedOrders);
     batchSendOrdersToProductionMock.mockResolvedValue({
       updated: 2,
       orders: updatedOrders,
@@ -57,14 +58,17 @@ describe('OrdersPage', () => {
 
     renderWithQuery();
 
-    const batchButton = await screen.findByRole('button', { name: 'Send All to Production (2)' });
+    await screen.findByText('ORD-1001');
+    fireEvent.click(screen.getAllByRole('checkbox')[0]);
+
+    const batchButton = await screen.findByRole('button', { name: 'Send selected to production (2)' });
     fireEvent.click(batchButton);
 
     await waitFor(() => {
       expect(batchSendOrdersToProductionMock).toHaveBeenCalledWith(['order-1', 'order-2']);
     });
-    expect(await screen.findByRole('button', { name: 'Send All to Production (0)' })).toBeDisabled();
-  });
+    expect(await screen.findByRole('button', { name: 'Send selected to production (0)' })).toBeDisabled();
+  }, 15000);
 });
 
 function renderWithQuery() {

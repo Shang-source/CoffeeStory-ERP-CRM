@@ -8,7 +8,9 @@ public sealed class BillingUseCase(
     IBillingRepository billingRepository,
     IEmailSender emailSender,
     IOutboxPublisher outbox,
-    IClock clock) : IBillingService
+    IClock clock,
+    IPdfGenerator pdfGenerator,
+    IDocumentStorageService documentStorage) : IBillingService
 {
     public async Task<IReadOnlyList<InvoiceDto>> GetAdminInvoices(CancellationToken cancellationToken)
     {
@@ -53,15 +55,17 @@ public sealed class BillingUseCase(
         billingRepository.AddAudit("GeneratedInvoicePdf", "Invoice", invoice.Id, $"Generated PDF for invoice {invoice.InvoiceNumber}");
         await billingRepository.SaveChanges(cancellationToken);
 
+        return BuildInvoicePdf(invoice);
+    }
+
+    private PdfDocumentResult BuildInvoicePdf(Invoice invoice)
+    {
         return new PdfDocumentResult(
             $"StoryCoffee Invoice {invoice.InvoiceNumber}",
             $"{invoice.InvoiceNumber}.pdf",
-            invoice.PdfFileKey,
-            invoice.PdfGeneratedAt.Value,
+            invoice.PdfFileKey!,
+            invoice.PdfGeneratedAt!.Value,
             [
-                "StoryCoffee",
-                "Wholesale coffee supply | Auckland, New Zealand",
-                "",
                 $"Customer: {invoice.Customer.BusinessName}",
                 $"Billing address: {invoice.Customer.BillingAddress}",
                 $"Issue date: {invoice.IssueDate:yyyy-MM-dd}",
@@ -79,7 +83,40 @@ public sealed class BillingUseCase(
                 $"Status: {invoice.Status}",
                 "",
                 "Payment terms: Please pay by the due date using your invoice number as reference."
-            ]);
+            ],
+            Invoice: new InvoicePdfDocument(
+                StoryCoffeeDocumentProfile.Default,
+                invoice.InvoiceNumber,
+                invoice.Customer.BusinessName,
+                invoice.Customer.Email,
+                invoice.Customer.BillingAddress,
+                invoice.IssueDate,
+                invoice.DueDate,
+                invoice.Subtotal,
+                invoice.GstAmount,
+                invoice.TotalAmount,
+                invoice.OutstandingAmount,
+                invoice.Items
+                    .OrderBy(item => item.Description)
+                    .Select(item => new InvoicePdfItem(
+                        item.Description,
+                        ResolveInvoiceItemNote(invoice, item),
+                        item.Quantity,
+                        item.UnitPrice,
+                        item.LineTotal))
+                    .ToList()));
+    }
+
+    private static string? ResolveInvoiceItemNote(Invoice invoice, InvoiceItem invoiceItem)
+    {
+        return invoice.Order.Items
+            .Where(item =>
+                item.ProductNameSnapshot == invoiceItem.Description &&
+                item.Quantity == invoiceItem.Quantity &&
+                item.UnitPriceSnapshot == invoiceItem.UnitPrice &&
+                item.LineTotal == invoiceItem.LineTotal)
+            .Select(item => item.Notes)
+            .FirstOrDefault(note => !string.IsNullOrWhiteSpace(note));
     }
 
     public async Task<InvoiceDto> SendInvoiceEmail(Guid invoiceId, CancellationToken cancellationToken)
@@ -89,13 +126,29 @@ public sealed class BillingUseCase(
 
         Require(invoice.Status is InvoiceStatus.Draft or InvoiceStatus.Issued, "Only draft or issued invoices can be sent.");
         Require(!string.IsNullOrWhiteSpace(invoice.Customer.Email), "Customer email is required.");
+        invoice.PdfFileKey ??= $"invoices/{invoice.InvoiceNumber}.pdf";
+        invoice.PdfGeneratedAt = clock.UtcNow;
+        if (invoice.Status == InvoiceStatus.Draft)
+        {
+            invoice.Status = InvoiceStatus.Issued;
+            invoice.Order.InvoiceStatus = InvoiceStatus.Issued;
+        }
+
+        var pdf = BuildInvoicePdf(invoice);
+        var pdfContent = pdfGenerator.Generate(pdf);
+        await documentStorage.Save(pdf.FileKey, pdfContent, "application/pdf", cancellationToken);
+
         invoice.EmailStatus = EmailStatus.Pending;
         invoice.UpdatedAt = clock.UtcNow;
         invoice.Order.UpdatedAt = clock.UtcNow;
         var subject = $"StoryCoffee invoice {invoice.InvoiceNumber}";
         var emailLog = billingRepository.AddEmailLog("Invoice", invoice.Id, invoice.Customer.Email, subject, EmailStatus.Pending);
-        var message = new EmailMessage(invoice.Customer.Email, subject, $"Your StoryCoffee invoice {invoice.InvoiceNumber} is ready.");
-        var outboxMessage = outbox.EnqueueEmail(new OutboxEmailPayload("Invoice", invoice.Id, emailLog.Id, message.RecipientEmail, message.Subject, message.Body));
+        var message = new EmailMessage(
+            invoice.Customer.Email,
+            subject,
+            $"Your StoryCoffee invoice {invoice.InvoiceNumber} is attached. Please use your company name or invoice number as the payment reference.",
+            [new EmailAttachment(pdf.FileName, "application/pdf", pdfContent)]);
+        var outboxMessage = outbox.EnqueueEmail(new OutboxEmailPayload("Invoice", invoice.Id, emailLog.Id, message.RecipientEmail, message.Subject, message.Body, message.Attachments));
         await billingRepository.SaveChanges(cancellationToken);
 
         var sendResult = await emailSender.Send(message, cancellationToken);
@@ -155,6 +208,7 @@ public sealed class BillingUseCase(
 
         billingRepository.AddPayment(payment);
         ApplyPaymentTotals(invoice, invoice.Payments);
+        await RecalculateEditableStatementSnapshots(invoice, cancellationToken);
         billingRepository.AddAudit("RecordedPayment", "Invoice", invoice.Id, $"Recorded payment {payment.Reference} for invoice {invoice.InvoiceNumber}", markedByUserId, UserRole.Admin.ToString());
         await billingRepository.SaveChanges(cancellationToken);
         return (invoice.ToDto(), payment.ToDto());
@@ -176,6 +230,7 @@ public sealed class BillingUseCase(
         payment.VoidedByUserId = markedByUserId;
         payment.VoidReason = request.Reason.Trim();
         ApplyPaymentTotals(invoice, invoice.Payments);
+        await RecalculateEditableStatementSnapshots(invoice, cancellationToken);
         billingRepository.AddAudit("VoidedPayment", "Invoice", invoice.Id, $"Voided payment {payment.Reference} for invoice {invoice.InvoiceNumber}", markedByUserId, UserRole.Admin.ToString());
         await billingRepository.SaveChanges(cancellationToken);
         return (invoice.ToDto(), payment.ToDto());
@@ -220,8 +275,33 @@ public sealed class BillingUseCase(
             ? InvoiceStatus.Paid
             : invoice.DueDate < clock.UtcNow ? InvoiceStatus.Overdue : paidAmount > 0 ? InvoiceStatus.PartiallyPaid : InvoiceStatus.Unpaid;
         invoice.Order.InvoiceStatus = invoice.Status;
+        if (invoice.Order.OrderStatus is OrderStatus.Shipped or OrderStatus.Completed)
+        {
+            invoice.Order.OrderStatus = invoice.Status == InvoiceStatus.Paid ? OrderStatus.Completed : OrderStatus.Shipped;
+        }
+
         invoice.UpdatedAt = clock.UtcNow;
         invoice.Order.UpdatedAt = clock.UtcNow;
+    }
+
+    private async Task RecalculateEditableStatementSnapshots(Invoice invoice, CancellationToken cancellationToken)
+    {
+        var statements = await billingRepository.GetEditableStatementsForCustomer(invoice.CustomerId, cancellationToken);
+        var now = clock.UtcNow;
+        foreach (var statement in statements)
+        {
+            var line = statement.Invoices.FirstOrDefault(item => item.InvoiceId == invoice.Id);
+            if (line is null)
+            {
+                continue;
+            }
+
+            line.OutstandingAmountSnapshot = invoice.OutstandingAmount;
+            line.StatusSnapshot = invoice.Status;
+            statement.TotalOutstanding = statement.Invoices.Sum(item => item.OutstandingAmountSnapshot);
+            statement.UpdatedAt = now;
+            billingRepository.AddAudit("RecalculatedStatementSnapshot", "Statement", statement.Id, $"Recalculated editable statement {statement.StatementNumber} after payment change");
+        }
     }
 
     private static string? NormalizeOptional(string? value)

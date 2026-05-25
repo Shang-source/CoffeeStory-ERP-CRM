@@ -87,6 +87,7 @@ export interface Customer {
   deliveryAddress: string;
   paymentTerms: string;
   accountStatus: AccountStatus;
+  hasPortalUser: boolean;
   createdAt: Date;
 }
 
@@ -171,6 +172,24 @@ export interface Order {
   gstAmount: number;
   totalAmount: number;
   items: OrderItem[];
+}
+
+export interface OrderQueryParams {
+  search?: string;
+  orderStatus?: OrderStatus | '';
+  invoiceStatus?: InvoiceStatus | '';
+  shipmentStatus?: ShipmentStatus | '';
+  customerId?: string;
+  from?: string;
+  to?: string;
+}
+
+export interface BatchShipAndInvoiceResponse {
+  updated: number;
+  orders: Order[];
+  invoiceEmailsSent: number;
+  statementEmailsSent: number;
+  emailFailures: string[];
 }
 
 export interface InvoiceItem {

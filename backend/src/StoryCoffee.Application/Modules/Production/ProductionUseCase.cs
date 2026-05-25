@@ -182,7 +182,7 @@ public sealed class ProductionUseCase(
             var item = batch.Items.FirstOrDefault(x => x.ProductId == requiredItem.ProductId);
             if (item is null)
             {
-                batch.Items.Add(new ProductionItem
+                var productionItem = new ProductionItem
                 {
                     Id = Guid.NewGuid(),
                     ProductionBatchId = batch.Id,
@@ -192,7 +192,9 @@ public sealed class ProductionUseCase(
                     TotalQuantity = requiredItem.TotalQuantity,
                     CreatedAt = now,
                     UpdatedAt = now
-                });
+                };
+                batch.Items.Add(productionItem);
+                production.AddProductionItem(productionItem);
                 continue;
             }
 

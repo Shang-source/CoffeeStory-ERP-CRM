@@ -1,15 +1,19 @@
-import { Box, Typography, Card, CardContent, Button, Chip, Divider, Grid } from '@mui/material';
+import { Alert, Box, Typography, Card, CardContent, Button, Divider, Grid } from '@mui/material';
 import { Link } from 'react-router';
 import { ShoppingCart, Receipt, Warning } from '@mui/icons-material';
 import { useAuth } from '@/app/providers/AuthProvider';
+import { useCustomerProfileQuery } from '@/entities/customer/api/customerQueries';
 import { useCustomerDashboardQuery } from '@/entities/dashboard/api/dashboardQueries';
 import { LoadingState } from '@/shared/ui/LoadingState';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { EmptyState } from '@/shared/ui/EmptyState';
+import { formatAccountStatus, formatInvoiceStatus, formatStandingOrderStatus, getAccountStatusColor, getInvoiceStatusColor, getStandingOrderStatusColor } from '@/shared/status/statusFormat';
+import { StatusChip } from '@/shared/ui/StatusChip';
 
 export default function CustomerDashboard() {
   const { user } = useAuth();
   const { data: dashboard, isLoading, error } = useCustomerDashboardQuery(Boolean(user?.customerId));
+  const profileQuery = useCustomerProfileQuery(Boolean(user?.customerId));
 
   if (!user || !user.customerId) {
     return <Typography>Access denied</Typography>;
@@ -28,6 +32,7 @@ export default function CustomerDashboard() {
   }
 
   const { standingOrder, recentInvoices } = dashboard;
+  const profile = profileQuery.data;
 
   return (
     <Box>
@@ -37,6 +42,21 @@ export default function CustomerDashboard() {
       <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
         Manage your coffee orders and invoices
       </Typography>
+
+      {profile && (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+          <Typography variant="body2" color="text.secondary">
+            Account Status
+          </Typography>
+          <StatusChip label={formatAccountStatus(profile.accountStatus)} color={getAccountStatusColor(profile.accountStatus)} />
+        </Box>
+      )}
+
+      {profile && profile.accountStatus !== 'Active' && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Your account is {formatAccountStatus(profile.accountStatus)}. Standing order generation is enabled only after StoryCoffee marks your account as Active.
+        </Alert>
+      )}
 
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, md: 4 }}>
@@ -51,7 +71,9 @@ export default function CustomerDashboard() {
                   <Typography variant="body2" color="text.secondary" gutterBottom>
                     Status
                   </Typography>
-                  <Chip label={standingOrder.status} color="success" size="small" sx={{ mb: 2 }} />
+                  <Box sx={{ mb: 2 }}>
+                    <StatusChip label={formatStandingOrderStatus(standingOrder.status)} color={getStandingOrderStatusColor(standingOrder.status)} />
+                  </Box>
                   <Typography variant="body2" color="text.secondary" gutterBottom>
                     Closing Frequency
                   </Typography>
@@ -191,11 +213,7 @@ export default function CustomerDashboard() {
                       <Typography variant="body1">
                         ${invoice.totalAmount.toFixed(2)}
                       </Typography>
-                      <Chip
-                        label={invoice.status}
-                        size="small"
-                        color={invoice.status === 'Overdue' ? 'error' : 'default'}
-                      />
+                      <StatusChip label={formatInvoiceStatus(invoice.status)} color={getInvoiceStatusColor(invoice.status)} />
                     </Box>
                   </Box>
                 ))}

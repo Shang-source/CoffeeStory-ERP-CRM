@@ -1,7 +1,7 @@
 import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, IconButton, Collapse, Alert, CircularProgress } from '@mui/material';
 import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
 import { useState } from 'react';
-import { formatOrderStatus, getOrderStatusColor } from '@/shared/status/statusFormat';
+import { formatInvoiceStatus, formatOrderStatus, getInvoiceStatusColor, getOrderStatusColor } from '@/shared/status/statusFormat';
 import { Order } from '@/entities/types';
 import { useCustomerOrdersQuery } from '@/entities/order/api/orderQueries';
 
@@ -28,7 +28,11 @@ function OrderRow({ order }: { order: Order }) {
         <TableCell align="right">${order.totalAmount.toFixed(2)}</TableCell>
         <TableCell>
           {order.invoiceStatus && (
-            <Chip label={order.invoiceStatus} size="small" variant="outlined" />
+            <Chip
+              label={formatInvoiceStatus(order.invoiceStatus)}
+              size="small"
+              sx={{ bgcolor: getInvoiceStatusColor(order.invoiceStatus), color: 'white' }}
+            />
           )}
         </TableCell>
       </TableRow>

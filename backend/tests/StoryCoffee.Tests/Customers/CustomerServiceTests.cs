@@ -100,9 +100,15 @@ public sealed class CustomerServiceTests
         services.AddScoped<ICustomerRepository, EfCustomerRepository>();
         services.AddScoped<IEmailSender, EmailSenderStub>();
         services.AddScoped<IOutboxPublisher, OutboxPublisher>();
+        services.AddSingleton<IPortalLinkProvider>(new TestPortalLinkProvider());
         services.AddScoped<ICustomerService, CustomerUseCase>();
         var provider = services.BuildServiceProvider();
         await SeedData.Initialize(provider);
         return provider;
+    }
+
+    private sealed class TestPortalLinkProvider : IPortalLinkProvider
+    {
+        public string LoginUrl => "http://localhost:8080";
     }
 }

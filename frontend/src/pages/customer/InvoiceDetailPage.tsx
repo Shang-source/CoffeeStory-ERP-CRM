@@ -1,9 +1,8 @@
 import { Box, Button, Card, CardContent, Chip, Divider, Grid, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from '@mui/material';
 import { ArrowBack, Download } from '@mui/icons-material';
 import { Link, useParams } from 'react-router';
-import { toast } from 'sonner';
 import { useCustomerInvoiceQuery } from '@/entities/invoice/api/invoiceQueries';
-import { downloadCustomerInvoicePdf } from '@/features/invoiceActions/api/invoiceActionsApi';
+import { useDownloadInvoicePdfMutation } from '@/features/invoiceActions/model/invoiceActionsMutations';
 import { formatInvoiceStatus, getInvoiceStatusColor } from '@/shared/status/statusFormat';
 import { LoadingState } from '@/shared/ui/LoadingState';
 import { ErrorState } from '@/shared/ui/ErrorState';
@@ -12,18 +11,17 @@ import { MoneyText } from '@/shared/ui/MoneyText';
 export default function CustomerInvoiceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const { data: invoice, isLoading, error } = useCustomerInvoiceQuery(id);
+  const downloadInvoiceMutation = useDownloadInvoicePdfMutation('customer');
 
   const handleDownload = async () => {
     if (!invoice) {
       return;
     }
 
-    try {
-      await downloadCustomerInvoicePdf(invoice.id);
-      toast.success(`Downloading invoice ${invoice.invoiceNumber}`);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Unable to download invoice');
-    }
+    downloadInvoiceMutation.mutate({
+      invoiceId: invoice.id,
+      invoiceNumber: invoice.invoiceNumber,
+    });
   };
 
   if (!id) {
@@ -53,7 +51,7 @@ export default function CustomerInvoiceDetailPage() {
             Issued {invoice.issueDate.toLocaleDateString()} · Due {invoice.dueDate.toLocaleDateString()}
           </Typography>
         </Box>
-        <Button variant="contained" startIcon={<Download />} onClick={handleDownload}>
+        <Button variant="contained" startIcon={<Download />} onClick={handleDownload} disabled={downloadInvoiceMutation.isPending}>
           Download PDF
         </Button>
       </Box>
