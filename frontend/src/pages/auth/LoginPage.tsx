@@ -1,13 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Alert, Box, Button, Card, CardContent, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, TextField, Typography } from '@mui/material';
 import { LocalCafe } from '@mui/icons-material';
 import { useAuth } from '@/app/providers/AuthProvider';
 
 export default function Login() {
   const navigate = useNavigate();
   const { login } = useAuth();
-  const [userType, setUserType] = useState<'customer' | 'admin'>('customer');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -27,17 +26,6 @@ export default function Login() {
     } else {
       setError('Invalid email or password');
     }
-  };
-
-  const handleUserTypeChange = (newType: 'customer' | 'admin') => {
-    setUserType(newType);
-    setError('');
-    if (newType === 'customer') {
-      setEmail('john@aucklandcafe.co.nz');
-    } else {
-      setEmail('admin@storycoffee.co.nz');
-    }
-    setPassword('password');
   };
 
   return (
@@ -63,17 +51,6 @@ export default function Login() {
             Sign in to your account
           </Typography>
 
-          <ToggleButtonGroup
-            value={userType}
-            exclusive
-            onChange={(e, value) => value && handleUserTypeChange(value)}
-            fullWidth
-            sx={{ mb: 3 }}
-          >
-            <ToggleButton value="customer">Customer Portal</ToggleButton>
-            <ToggleButton value="admin">Admin Portal</ToggleButton>
-          </ToggleButtonGroup>
-
           {error && (
             <Alert severity="error" sx={{ mb: 2 }}>
               {error}
@@ -86,6 +63,7 @@ export default function Login() {
             fullWidth
             margin="normal"
             value={email}
+            autoComplete="email"
             onChange={(e) => setEmail(e.target.value)}
           />
           <TextField
@@ -94,6 +72,7 @@ export default function Login() {
             fullWidth
             margin="normal"
             value={password}
+            autoComplete="current-password"
             onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
           />
@@ -107,18 +86,6 @@ export default function Login() {
           >
             {isSubmitting ? 'Signing in...' : 'Sign In'}
           </Button>
-
-          <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
-            <Typography variant="caption" display="block" gutterBottom>
-              <strong>Demo Accounts:</strong>
-            </Typography>
-            <Typography variant="caption" display="block">
-              Customer: john@aucklandcafe.co.nz / password
-            </Typography>
-            <Typography variant="caption" display="block">
-              Admin: admin@storycoffee.co.nz / password
-            </Typography>
-          </Box>
         </CardContent>
       </Card>
     </Box>
