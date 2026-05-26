@@ -18,6 +18,24 @@ const palette = {
   blush: '#F6B5AE',
 };
 
+const dateRangeFormatter = new Intl.DateTimeFormat('en-NZ', {
+  month: 'short',
+  day: 'numeric',
+  year: 'numeric',
+});
+
+function formatCurrentWeekRange(now = new Date()) {
+  const startOfWeek = new Date(now);
+  const dayOffset = (startOfWeek.getDay() + 6) % 7;
+  startOfWeek.setDate(startOfWeek.getDate() - dayOffset);
+  startOfWeek.setHours(0, 0, 0, 0);
+
+  const endOfWeek = new Date(startOfWeek);
+  endOfWeek.setDate(startOfWeek.getDate() + 6);
+
+  return `${dateRangeFormatter.format(startOfWeek)} – ${dateRangeFormatter.format(endOfWeek)}`;
+}
+
 function MetricCard({
   title,
   value,
@@ -64,6 +82,7 @@ function MetricCard({
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const { data: dashboard, isLoading, error } = useAdminDashboardQuery();
+  const currentWeekRange = formatCurrentWeekRange();
 
   if (isLoading) {
     return <LoadingState />;
@@ -87,7 +106,7 @@ export default function AdminDashboard() {
           <Typography variant="body1" color="text.secondary">Here’s an overview of your business operations.</Typography>
         </Box>
         <Button variant="outlined" startIcon={<CalendarMonth />} sx={{ color: palette.espresso, borderColor: '#D8C9B8', bgcolor: '#fff' }}>
-          May 8 – May 14, 2026
+          {currentWeekRange}
         </Button>
       </Stack>
 
