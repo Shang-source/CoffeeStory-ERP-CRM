@@ -143,12 +143,14 @@ public sealed class BillingUseCase(
         invoice.Order.UpdatedAt = clock.UtcNow;
         var subject = $"StoryCoffee invoice {invoice.InvoiceNumber}";
         var emailLog = billingRepository.AddEmailLog("Invoice", invoice.Id, invoice.Customer.Email, subject, EmailStatus.Pending);
+        var renderedEmail = StoryCoffeeEmailTemplates.Invoice(invoice.InvoiceNumber, invoice.Customer.BusinessName, invoice.OutstandingAmount, invoice.DueDate);
         var message = new EmailMessage(
             invoice.Customer.Email,
             subject,
-            $"Your StoryCoffee invoice {invoice.InvoiceNumber} is attached. Please use your company name or invoice number as the payment reference.",
-            [new EmailAttachment(pdf.FileName, "application/pdf", pdfContent)]);
-        var outboxMessage = outbox.EnqueueEmail(new OutboxEmailPayload("Invoice", invoice.Id, emailLog.Id, message.RecipientEmail, message.Subject, message.Body, message.Attachments));
+            renderedEmail.TextBody,
+            [new EmailAttachment(pdf.FileName, "application/pdf", pdfContent)],
+            renderedEmail.HtmlBody);
+        var outboxMessage = outbox.EnqueueEmail(new OutboxEmailPayload("Invoice", invoice.Id, emailLog.Id, message.RecipientEmail, message.Subject, message.Body, message.Attachments, message.HtmlBody));
         await billingRepository.SaveChanges(cancellationToken);
 
         var sendResult = await emailSender.Send(message, cancellationToken);

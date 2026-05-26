@@ -9,3 +9,4 @@ obj/
 *.suo
 .env
 .env.local
+.env.production

@@ -43,9 +43,15 @@ services:
 
   mailhog:
     image: mailhog/mailhog:v1.0.1
+    user: "0:0"
+    environment:
+      MH_STORAGE: maildir
+      MH_MAILDIR_PATH: /maildir
     ports:
       - "1025:1025"
       - "8025:8025"
+    volumes:
+      - mailhog_data:/maildir
 
   api:
     build:
@@ -114,3 +120,4 @@ volumes:
   postgres_data:
   localstack_data:
   document_storage:
+  mailhog_data:

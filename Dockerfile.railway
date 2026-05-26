@@ -1,0 +1,31 @@
+FROM node:20-alpine AS frontend-build
+WORKDIR /app
+
+RUN corepack enable
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+COPY frontend/package.json frontend/
+RUN pnpm install --filter frontend --frozen-lockfile
+
+COPY frontend frontend
+RUN pnpm --filter frontend build
+
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS api-build
+WORKDIR /src
+
+COPY backend/src/StoryCoffee.Domain/StoryCoffee.Domain.csproj backend/src/StoryCoffee.Domain/
+COPY backend/src/StoryCoffee.Contracts/StoryCoffee.Contracts.csproj backend/src/StoryCoffee.Contracts/
+COPY backend/src/StoryCoffee.Application/StoryCoffee.Application.csproj backend/src/StoryCoffee.Application/
+COPY backend/src/StoryCoffee.Infrastructure/StoryCoffee.Infrastructure.csproj backend/src/StoryCoffee.Infrastructure/
+COPY backend/src/StoryCoffee.Api/StoryCoffee.Api.csproj backend/src/StoryCoffee.Api/
+RUN dotnet restore backend/src/StoryCoffee.Api/StoryCoffee.Api.csproj
+
+COPY backend backend
+RUN dotnet publish backend/src/StoryCoffee.Api/StoryCoffee.Api.csproj -c Release -o /app/publish --no-restore
+
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+COPY --from=api-build /app/publish .
+COPY --from=frontend-build /app/frontend/dist ./wwwroot
+EXPOSE 8080
+CMD ["sh", "-c", "ASPNETCORE_URLS=http://0.0.0.0:${PORT:-8080} dotnet StoryCoffee.Api.dll"]

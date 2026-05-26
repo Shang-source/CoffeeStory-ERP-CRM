@@ -1,0 +1,123 @@
+services:
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "no", "--save", ""]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build:
+      context: ..
+      dockerfile: backend/src/StoryCoffee.Api/Dockerfile
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__DefaultConnection: Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      Jwt__Secret: ${JWT_SECRET}
+      Jwt__Issuer: StoryCoffee
+      Jwt__Audience: StoryCoffee.App
+      Jwt__ExpiryMinutes: ${JWT_EXPIRY_MINUTES:-480}
+      Cors__AllowedOrigins__0: https://${APP_DOMAIN}
+      SeedData__Enabled: "false"
+      SeedData__EnableInDevelopment: "false"
+      SeedData__EnableInTesting: "false"
+      Testing__ResetEnabled: "false"
+      Redis__Enabled: ${REDIS_ENABLED:-true}
+      Redis__ConnectionString: redis:6379
+      DocumentStorage__Provider: ${DOCUMENT_STORAGE_PROVIDER:-Local}
+      DocumentStorage__LocalRoot: /var/storycoffee/documents
+      DocumentStorage__SigningSecret: ${DOCUMENT_STORAGE_SIGNING_SECRET}
+      DocumentStorage__PresignedUrlMinutes: ${DOCUMENT_STORAGE_PRESIGNED_URL_MINUTES:-15}
+      DocumentStorage__BucketName: ${DOCUMENT_STORAGE_BUCKET_NAME:-storycoffee-documents}
+      DocumentStorage__S3Region: ${DOCUMENT_STORAGE_S3_REGION:-ap-southeast-2}
+      DocumentStorage__ServiceUrl: ${DOCUMENT_STORAGE_SERVICE_URL:-}
+      DocumentStorage__AccessKey: ${DOCUMENT_STORAGE_ACCESS_KEY:-}
+      DocumentStorage__SecretKey: ${DOCUMENT_STORAGE_SECRET_KEY:-}
+      DocumentStorage__ForcePathStyle: ${DOCUMENT_STORAGE_FORCE_PATH_STYLE:-true}
+      Email__Provider: ${EMAIL_PROVIDER:-Smtp}
+      Email__FromName: ${EMAIL_FROM_NAME:-StoryCoffee}
+      Email__FromAddress: ${EMAIL_FROM_ADDRESS}
+      Email__SmtpHost: ${EMAIL_SMTP_HOST:-smtp-relay.brevo.com}
+      Email__SmtpPort: ${EMAIL_SMTP_PORT:-587}
+      Email__SmtpUsername: ${EMAIL_SMTP_USERNAME:-}
+      Email__SmtpPassword: ${EMAIL_SMTP_PASSWORD:-}
+      Email__UseStartTls: ${EMAIL_USE_START_TLS:-true}
+      Email__SesRegion: ${EMAIL_SES_REGION:-ap-southeast-2}
+      Email__SesConfigurationSet: ${EMAIL_SES_CONFIGURATION_SET:-}
+      Email__WebhookSecret: ${EMAIL_WEBHOOK_SECRET:-}
+      Email__VerifySnsSignature: ${EMAIL_VERIFY_SNS_SIGNATURE:-true}
+      Email__AutoConfirmSnsSubscriptions: ${EMAIL_AUTO_CONFIRM_SNS_SUBSCRIPTIONS:-false}
+      Email__SnsTopicArn: ${EMAIL_SNS_TOPIC_ARN:-}
+      Portal__BaseUrl: https://${APP_DOMAIN}
+      Outbox__Enabled: ${OUTBOX_ENABLED:-true}
+      Outbox__PollIntervalSeconds: ${OUTBOX_POLL_INTERVAL_SECONDS:-30}
+      Outbox__BatchSize: ${OUTBOX_BATCH_SIZE:-20}
+      Outbox__RetryDelaySeconds: ${OUTBOX_RETRY_DELAY_SECONDS:-300}
+      Outbox__MaxAttempts: ${OUTBOX_MAX_ATTEMPTS:-5}
+      Outbox__LockTimeoutSeconds: ${OUTBOX_LOCK_TIMEOUT_SECONDS:-300}
+    volumes:
+      - document_storage:/var/storycoffee/documents
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+
+  frontend:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  document_storage:
+  caddy_data:
+  caddy_config:

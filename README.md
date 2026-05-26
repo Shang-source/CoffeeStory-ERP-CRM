@@ -96,6 +96,10 @@ pnpm test:e2e:reset
 
 The reset endpoint is disabled by default and only works in Development or Testing when `Testing:ResetEnabled=true`.
 
+## Railway Demo
+
+For a temporary Railway demo deployment, use the single-service setup in `Dockerfile.railway` and `railway.json`. Full steps and required variables are documented in `docs/railway-demo-deploy.md`.
+
 ## Seed Data
 
 Demo data is controlled by `SeedData` options. Production defaults do not seed test/demo data; development and testing can opt in through `SeedData:EnableInDevelopment`, `SeedData:EnableInTesting`, or explicit `SeedData:Enabled`.
@@ -152,3 +156,4 @@ helm template storycoffee infra/helm/storycoffee -f infra/helm/storycoffee/value
 For local Kubernetes deployment with Docker Desktop, see `docs/kubernetes-local.md`.
 For AWS staging/production readiness, see `docs/aws-production-checklist.md`.
 For backup and restore procedures, see `docs/backup-restore.md`.
+For the low-cost VPS production path, see `docs/vps-production-runbook.md` and `docs/production-readiness-checklist.md`.

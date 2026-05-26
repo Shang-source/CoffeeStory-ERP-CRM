@@ -7,7 +7,8 @@ public sealed record OutboxEmailPayload(
     string RecipientEmail,
     string Subject,
     string Body,
-    IReadOnlyList<EmailAttachment>? Attachments = null);
+    IReadOnlyList<EmailAttachment>? Attachments = null,
+    string? HtmlBody = null);
 
 public static class OutboxMessageTypes
 {

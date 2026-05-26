@@ -11,7 +11,8 @@ public sealed record EmailMessage(
     string RecipientEmail,
     string Subject,
     string Body,
-    IReadOnlyList<EmailAttachment>? Attachments = null);
+    IReadOnlyList<EmailAttachment>? Attachments = null,
+    string? HtmlBody = null);
 
 public sealed record EmailAttachment(
     string FileName,

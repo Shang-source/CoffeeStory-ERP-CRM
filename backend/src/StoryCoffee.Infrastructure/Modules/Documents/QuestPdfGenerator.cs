@@ -9,14 +9,10 @@ namespace StoryCoffee.Infrastructure.Documents;
 public sealed class QuestPdfGenerator(IClock clock) : IPdfGenerator
 {
     private const string TextColor = "#1E2A32";
-    private const string MutedTextColor = "#5A6770";
-    private const string RuleColor = "#D5DEE3";
-    private const string BrandGreen = "#27B36F";
-    private const string LogoGreen = "#007A3D";
+    private const string MutedTextColor = "#4B5560";
     private const string HeaderBackground = "#EAF5F8";
     private const string TableHeaderBackground = "#E3F2FD";
     private const string NotesBackground = "#F7F3EE";
-    private const string AmountHighlightBackground = "#F3F3F3";
 
     private const string StoryCoffeeLogoSvg = """
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
@@ -90,19 +86,28 @@ public sealed class QuestPdfGenerator(IClock clock) : IPdfGenerator
             container.Page(page =>
             {
                 page.Size(PageSizes.A4);
-                page.Margin(0);
-                page.DefaultTextStyle(style => style.FontSize(11).FontFamily(Fonts.Arial).FontColor(TextColor));
+                page.Margin(24);
+                page.DefaultTextStyle(style => style.FontSize(9).FontFamily(Fonts.Arial).FontColor(TextColor));
 
-                page.Content().Column(column =>
+                page.Header().Element(content => HeroHeader(content, invoice.Company.Name, $"Invoice {invoice.InvoiceNumber}", invoice.AmountDue, invoice.DueDate));
+                page.Content().PaddingTop(10).Column(column =>
                 {
-                    column.Item().Height(255).PaddingHorizontal(32).PaddingTop(50).Element(content => InvoiceHeader(content, invoice.Company));
-                    column.Item().LineHorizontal(1).LineColor(RuleColor);
-                    column.Item().Height(125).PaddingHorizontal(32).PaddingVertical(20).Element(content => InvoicePartiesAndSummary(content, invoice));
-                    column.Item().Element(content => InvoiceItemsTable(content, invoice.Items));
-                    column.Item().LineHorizontal(1).LineColor(RuleColor);
-                    column.Item().PaddingHorizontal(32).PaddingTop(18).Element(content => InvoiceTotalsBlock(content, invoice));
-                    column.Item().PaddingHorizontal(32).PaddingTop(58).Element(content => InvoicePaymentTerms(content, invoice.Company));
+                    column.Spacing(9);
+                    column.Item().Element(content => BrandBlock(content, invoice.Company));
+                    column.Item().Element(content => DocumentSummary(content, [
+                        ("Invoice number", invoice.InvoiceNumber),
+                        ("GST number", invoice.Company.GstNumber),
+                        ("Invoice date", invoice.IssueDate.ToString("MMM d, yyyy")),
+                        ("Payment due", invoice.DueDate.ToString("MMM d, yyyy")),
+                        ("Bill to", invoice.CustomerName),
+                        ("Billing address", invoice.BillingAddress)
+                    ]));
+
+                    column.Item().Text("Items").FontSize(13).Bold().FontColor(TextColor);
+                    column.Item().Element(content => BrandedInvoiceItemsTable(content, invoice.Items));
+                    column.Item().Element(content => InvoiceClosingRow(content, invoice));
                 });
+                page.Footer().Element(Footer);
             });
         }).GeneratePdf();
     }
@@ -169,82 +174,6 @@ public sealed class QuestPdfGenerator(IClock clock) : IPdfGenerator
         });
     }
 
-    private static void InvoiceHeader(IContainer container, CompanyDocumentProfile company)
-    {
-        container.Row(row =>
-        {
-            row.RelativeItem().AlignMiddle().Element(InvoiceLogoBlock);
-            row.RelativeItem().AlignMiddle().Column(column =>
-            {
-                column.Spacing(8);
-                column.Item().AlignRight().Text("INVOICE").FontSize(34).LetterSpacing(2).FontColor(TextColor);
-                column.Item().AlignRight().Text($"GST number: {company.GstNumber}").FontSize(13).FontColor(MutedTextColor);
-                column.Item().PaddingTop(12).AlignRight().Text(company.Name).FontSize(12).Bold();
-                column.Item().AlignRight().Text(company.PostalAddressLine1).FontSize(12);
-                column.Item().AlignRight().Text(company.PostalAddressLine2).FontSize(12);
-                column.Item().AlignRight().Text(company.Country).FontSize(12);
-                column.Item().PaddingTop(16).AlignRight().Text(company.Website).FontSize(12);
-            });
-        });
-    }
-
-    private static void InvoiceLogoBlock(IContainer container)
-    {
-        container.PaddingLeft(40).Width(120).Column(column =>
-        {
-            column.Item().AlignCenter().Width(76).Svg(StoryCoffeeLogoSvg);
-            column.Item().PaddingTop(4).AlignCenter().Text("STORY").FontSize(25).Bold().FontColor("#000000");
-            column.Item().AlignCenter().Text("COFFEE").FontSize(16).FontColor("#333333");
-        });
-    }
-
-    private static void InvoicePartiesAndSummary(IContainer container, InvoicePdfDocument invoice)
-    {
-        container.Row(row =>
-        {
-            row.RelativeItem().Column(column =>
-            {
-                column.Spacing(6);
-                column.Item().Text("Bill to").FontSize(12).Bold().FontColor(MutedTextColor);
-                column.Item().Text(invoice.CustomerName).FontSize(12).Bold();
-                if (!string.IsNullOrWhiteSpace(invoice.CustomerEmail))
-                {
-                    column.Item().PaddingTop(16).Text(invoice.CustomerEmail).FontSize(12);
-                }
-            });
-
-            row.ConstantItem(285).Element(content => InvoiceSummary(content, invoice));
-        });
-    }
-
-    private static void InvoiceSummary(IContainer container, InvoicePdfDocument invoice)
-    {
-        container.Column(column =>
-        {
-            InvoiceSummaryRow(column, "Invoice Number", invoice.InvoiceNumber);
-            InvoiceSummaryRow(column, "Invoice Date", invoice.IssueDate.ToString("MMM d, yyyy"));
-            InvoiceSummaryRow(column, "Payment Due", invoice.DueDate.ToString("MMM d, yyyy"));
-            InvoiceSummaryRow(column, "Amount Due (NZD)", Money(invoice.AmountDue), true);
-        });
-    }
-
-    private static void InvoiceSummaryRow(ColumnDescriptor column, string label, string value, bool highlight = false)
-    {
-        column.Item()
-            .Background(highlight ? AmountHighlightBackground : "#FFFFFF")
-            .PaddingVertical(highlight ? 8 : 2)
-            .PaddingHorizontal(4)
-            .Row(row =>
-            {
-                row.ConstantItem(150).AlignRight().Text($"{label}:").FontSize(12).Bold();
-                var valueText = row.ConstantItem(115).PaddingLeft(12).Text(value).FontSize(12);
-                if (highlight)
-                {
-                    valueText.Bold();
-                }
-            });
-    }
-
     private static void DocumentSummary(IContainer container, IReadOnlyList<(string Label, string Value)> rows)
     {
         container.Table(table =>
@@ -288,94 +217,32 @@ public sealed class QuestPdfGenerator(IClock clock) : IPdfGenerator
         }
     }
 
-    private static void InvoiceItemsTable(IContainer container, IReadOnlyList<InvoicePdfItem> items)
+    private static void BrandedInvoiceItemsTable(IContainer container, IReadOnlyList<InvoicePdfItem> items)
     {
         container.Table(table =>
         {
             table.ColumnsDefinition(columns =>
             {
                 columns.RelativeColumn();
-                columns.ConstantColumn(110);
-                columns.ConstantColumn(120);
-                columns.ConstantColumn(120);
+                columns.ConstantColumn(85);
+                columns.ConstantColumn(90);
+                columns.ConstantColumn(95);
             });
-            InvoiceTableHeader(table, "Items", "Quantity", "Price", "Amount");
+            TableHeader(table, "Items", "Quantity", "Price", "Amount");
             foreach (var item in items)
             {
-                table.Cell().Element(InvoiceItemDescriptionCell).Column(column =>
+                table.Cell().Element(TableCell).Column(column =>
                 {
-                    column.Item().Text(item.Description).FontSize(12).Bold();
+                    column.Item().Text(item.Description).SemiBold();
                     if (!string.IsNullOrWhiteSpace(item.Note))
                     {
-                        column.Item().PaddingTop(4).Text(item.Note).FontSize(12).FontColor(MutedTextColor);
+                        column.Item().PaddingTop(2).Text(item.Note).FontColor(MutedTextColor);
                     }
                 });
-                table.Cell().Element(InvoiceItemCell).AlignCenter().Text(item.Quantity.ToString()).FontSize(12);
-                table.Cell().Element(InvoiceItemCell).AlignRight().Text(Money(item.UnitPrice)).FontSize(12);
-                table.Cell().Element(InvoiceItemCell).AlignRight().Text(Money(item.LineTotal)).FontSize(12);
+                table.Cell().Element(TableCell).AlignRight().Text(item.Quantity.ToString());
+                table.Cell().Element(TableCell).AlignRight().Text(Money(item.UnitPrice));
+                table.Cell().Element(TableCell).AlignRight().Text(Money(item.LineTotal));
             }
-        });
-    }
-
-    private static void InvoiceTableHeader(TableDescriptor table, params string[] labels)
-    {
-        for (var index = 0; index < labels.Length; index++)
-        {
-            var cell = table.Cell()
-                .Background(BrandGreen)
-                .PaddingVertical(12)
-                .PaddingRight(32);
-
-            if (index == 0)
-            {
-                cell = cell.PaddingLeft(32);
-            }
-
-            cell.Text(labels[index]).FontSize(12).Bold().FontColor("#FFFFFF");
-        }
-    }
-
-    private static IContainer InvoiceItemDescriptionCell(IContainer container)
-    {
-        return container.MinHeight(54).PaddingLeft(32).PaddingRight(8).PaddingVertical(10);
-    }
-
-    private static IContainer InvoiceItemCell(IContainer container)
-    {
-        return container.MinHeight(54).PaddingRight(32).PaddingVertical(14);
-    }
-
-    private static void InvoiceTotalsBlock(IContainer container, InvoicePdfDocument invoice)
-    {
-        container.Row(row =>
-        {
-            row.RelativeItem();
-            row.ConstantItem(250).Column(column =>
-            {
-                column.Item().PaddingVertical(6).Row(total =>
-                {
-                    total.RelativeItem().AlignRight().Text("Total:").FontSize(12).Bold();
-                    total.ConstantItem(105).AlignRight().Text(Money(invoice.TotalAmount)).FontSize(12);
-                });
-                column.Item().LineHorizontal(1).LineColor(RuleColor);
-                column.Item().PaddingTop(14).Row(total =>
-                {
-                    total.RelativeItem().AlignRight().Text("Amount Due (NZD):").FontSize(12).Bold();
-                    total.ConstantItem(105).AlignRight().Text(Money(invoice.AmountDue)).FontSize(12).Bold();
-                });
-            });
-        });
-    }
-
-    private static void InvoicePaymentTerms(IContainer container, CompanyDocumentProfile company)
-    {
-        container.Column(column =>
-        {
-            column.Spacing(8);
-            column.Item().Text("Notes / Terms").FontSize(12).Bold();
-            column.Item().Text("Please use your company name or invoice number as the reference.").FontSize(12);
-            column.Item().PaddingTop(8).Text($"Bank: {company.BankName}").FontSize(12);
-            column.Item().Text($"Account number: {company.BankAccountNumber}").FontSize(12);
         });
     }
 

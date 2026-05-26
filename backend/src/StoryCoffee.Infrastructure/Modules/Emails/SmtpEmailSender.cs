@@ -22,7 +22,11 @@ public sealed class SmtpEmailSender(IOptions<EmailOptions> options, ILogger<Smtp
             mimeMessage.From.Add(new MailboxAddress(options.FromName, options.FromAddress));
             mimeMessage.To.Add(MailboxAddress.Parse(message.RecipientEmail));
             mimeMessage.Subject = message.Subject;
-            var bodyBuilder = new BodyBuilder { TextBody = message.Body };
+            var bodyBuilder = new BodyBuilder
+            {
+                TextBody = message.Body,
+                HtmlBody = message.HtmlBody
+            };
             foreach (var attachment in message.Attachments ?? [])
             {
                 bodyBuilder.Attachments.Add(attachment.FileName, attachment.Content, ContentType.Parse(attachment.ContentType));

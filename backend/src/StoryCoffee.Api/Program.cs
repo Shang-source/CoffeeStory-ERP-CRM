@@ -30,7 +30,29 @@ app.UseCors("Frontend");
 app.UseMiddleware<ApiExceptionMiddleware>();
 app.UseMiddleware<JwtAuthenticationMiddleware>();
 app.UseMiddleware<CustomerAccountStatusMiddleware>();
+app.UseDefaultFiles();
+app.UseStaticFiles();
 app.MapControllers();
+app.MapFallback(async context =>
+{
+    if (context.Request.Path.StartsWithSegments("/api")
+        || context.Request.Path.StartsWithSegments("/health")
+        || context.Request.Path.StartsWithSegments("/ready"))
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
+    var indexPath = Path.Combine(app.Environment.WebRootPath ?? "wwwroot", "index.html");
+    if (!File.Exists(indexPath))
+    {
+        context.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
+    context.Response.ContentType = "text/html; charset=utf-8";
+    await context.Response.SendFileAsync(indexPath);
+});
 
 await app.InitializeDatabaseAsync();
 app.Run();

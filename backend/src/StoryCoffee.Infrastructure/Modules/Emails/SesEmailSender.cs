@@ -21,6 +21,23 @@ public sealed class SesEmailSender(
     {
         try
         {
+            var body = new Body
+            {
+                Text = new Content
+                {
+                    Data = message.Body,
+                    Charset = "UTF-8"
+                }
+            };
+            if (!string.IsNullOrWhiteSpace(message.HtmlBody))
+            {
+                body.Html = new Content
+                {
+                    Data = message.HtmlBody,
+                    Charset = "UTF-8"
+                };
+            }
+
             var request = new SendEmailRequest
             {
                 FromEmailAddress = BuildFromAddress(),
@@ -37,14 +54,7 @@ public sealed class SesEmailSender(
                             Data = message.Subject,
                             Charset = "UTF-8"
                         },
-                        Body = new Body
-                        {
-                            Text = new Content
-                            {
-                                Data = message.Body,
-                                Charset = "UTF-8"
-                            }
-                        }
+                        Body = body
                     }
                 }
             };

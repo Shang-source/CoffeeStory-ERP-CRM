@@ -76,7 +76,7 @@ public sealed class OutboxProcessor(
         {
             var payload = JsonSerializer.Deserialize<OutboxEmailPayload>(message.Payload, jsonOptions)
                 ?? throw new InvalidOperationException("Outbox email payload is invalid.");
-            var result = await emailSender.Send(new EmailMessage(payload.RecipientEmail, payload.Subject, payload.Body, payload.Attachments), cancellationToken);
+            var result = await emailSender.Send(new EmailMessage(payload.RecipientEmail, payload.Subject, payload.Body, payload.Attachments, payload.HtmlBody), cancellationToken);
             if (!result.Succeeded)
             {
                 throw new InvalidOperationException(result.ErrorMessage ?? "Email provider failed.");

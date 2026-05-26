@@ -127,8 +127,9 @@ public sealed class CustomerUseCase(
 
         var subject = "Welcome to StoryCoffee";
         var emailLog = customers.AddEmailLog("CustomerInvite", customer.Id, customer.Email, subject, EmailStatus.Pending);
-        var message = new EmailMessage(customer.Email, subject, BuildInviteEmailBody(customer, email, temporaryPassword));
-        var outboxMessage = outbox.EnqueueEmail(new OutboxEmailPayload("CustomerInvite", customer.Id, emailLog.Id, message.RecipientEmail, message.Subject, message.Body));
+        var renderedEmail = BuildInviteEmail(customer, email, temporaryPassword);
+        var message = new EmailMessage(customer.Email, subject, renderedEmail.TextBody, HtmlBody: renderedEmail.HtmlBody);
+        var outboxMessage = outbox.EnqueueEmail(new OutboxEmailPayload("CustomerInvite", customer.Id, emailLog.Id, message.RecipientEmail, message.Subject, message.Body, HtmlBody: message.HtmlBody));
         customers.AddAuditChange("SentCustomerInvite", "Customer", customer.Id, $"Created portal account and sent invite email to {customer.Email}", oldValues, CustomerAuditValues(customer));
         await unitOfWork.SaveChanges(cancellationToken);
 
@@ -248,22 +249,12 @@ public sealed class CustomerUseCase(
         return new string((phone ?? "").Where(char.IsDigit).ToArray());
     }
 
-    private string BuildInviteEmailBody(Customer customer, string email, string temporaryPassword)
+    private RenderedEmail BuildInviteEmail(Customer customer, string email, string temporaryPassword)
     {
         var contactName = string.IsNullOrWhiteSpace(customer.ContactPerson)
             ? customer.BusinessName
             : customer.ContactPerson;
-        return $"""
-            Hello {contactName},
-
-            Your StoryCoffee customer portal account has been created.
-
-            Login URL: {portalLinks.LoginUrl}
-            Email: {email}
-            Temporary password: {temporaryPassword}
-
-            Please change your password after your first login. Until you change it, this temporary password will remain valid.
-            """;
+        return StoryCoffeeEmailTemplates.CustomerInvite(contactName, portalLinks.LoginUrl, email, temporaryPassword);
     }
 
     private static object CustomerAuditValues(Customer customer)

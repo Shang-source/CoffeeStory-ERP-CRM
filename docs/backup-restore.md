@@ -123,3 +123,29 @@ After any restore:
 - Staging: 7 days of RDS automated backups.
 - Production: at least 35 days of RDS automated backups plus pre-release snapshots.
 - S3 production documents: versioning enabled, lifecycle deletion only after a written retention decision.
+
+## Low-Cost VPS Production
+
+The VPS production path uses `infra/docker-compose.vps.yml`. PostgreSQL and local document storage are durable Docker volumes. Redis remains disposable.
+
+Create a production backup:
+
+```bash
+scripts/vps-backup.sh
+```
+
+The backup script writes:
+
+- PostgreSQL dump: `storycoffee-postgres.sql.gz`.
+- Local document archive: `storycoffee-documents.tar.gz`.
+- Rendered compose config: `docker-compose-rendered.yml`.
+
+If `BACKUP_S3_URI` is configured, the same backup folder is uploaded off-server. Keep at least one off-server copy before real customer usage.
+
+Restore is intentionally manual. Print the restore notes:
+
+```bash
+scripts/vps-restore-notes.sh
+```
+
+Do not restore production during active customer usage without an explicit rollback decision and a known data-loss window.

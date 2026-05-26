@@ -157,12 +157,14 @@ public sealed class StatementUseCase(
 
         var subject = $"StoryCoffee statement {statement.StatementNumber}";
         var emailLog = statementRepository.AddEmailLog("Statement", statement.Id, statement.Customer.Email, subject, EmailStatus.Pending);
+        var renderedEmail = StoryCoffeeEmailTemplates.Statement(statement.StatementNumber, statement.Customer.BusinessName, statement.TotalOutstanding, statement.StatementDate);
         var message = new EmailMessage(
             statement.Customer.Email,
             subject,
-            $"Your StoryCoffee statement {statement.StatementNumber} is attached.",
-            [new EmailAttachment(pdf.FileName, "application/pdf", pdfContent)]);
-        var outboxMessage = outbox.EnqueueEmail(new OutboxEmailPayload("Statement", statement.Id, emailLog.Id, message.RecipientEmail, message.Subject, message.Body, message.Attachments));
+            renderedEmail.TextBody,
+            [new EmailAttachment(pdf.FileName, "application/pdf", pdfContent)],
+            renderedEmail.HtmlBody);
+        var outboxMessage = outbox.EnqueueEmail(new OutboxEmailPayload("Statement", statement.Id, emailLog.Id, message.RecipientEmail, message.Subject, message.Body, message.Attachments, message.HtmlBody));
         await statementRepository.SaveChanges(cancellationToken);
 
         var sendResult = await emailSender.Send(message, cancellationToken);
