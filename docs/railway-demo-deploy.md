@@ -24,9 +24,11 @@ Do not create a separate frontend service for the first demo unless you also cha
 - Root directory: `/`
 - Config file: `railway.json`
 - Dockerfile: `Dockerfile.railway`
-- Healthcheck path: `/ready`
+- Railway healthcheck path: `/health`
 
 `railway.json` already sets the Dockerfile path and healthcheck.
+
+Railway uses `/health` as the platform liveness check so the service can start even while database variables are still being corrected. Use `/ready` manually after deploy to verify PostgreSQL and document storage are fully connected.
 
 ## Cloudflare domain
 
@@ -140,8 +142,9 @@ Email__FromAddress=<verified sender>
 7. Generate Railway public domain.
 8. Replace `Portal__BaseUrl` and `Cors__AllowedOrigins__0` with that domain.
 9. Redeploy the web service.
-10. Open `https://<your-domain>/ready`; expect DB/document storage ready.
-11. Open `https://<your-domain>/`.
+10. Open `https://<your-domain>/health`; expect `ok`.
+11. Open `https://<your-domain>/ready`; expect DB/document storage ready.
+12. Open `https://<your-domain>/`.
 
 ## Demo accounts
 
