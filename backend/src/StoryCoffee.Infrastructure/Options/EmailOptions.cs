@@ -10,6 +10,8 @@ public sealed class EmailOptions
     public string? SmtpUsername { get; init; }
     public string? SmtpPassword { get; init; }
     public bool UseStartTls { get; init; }
+    public string? ResendApiKey { get; init; }
+    public string ResendApiUrl { get; init; } = "https://api.resend.com/";
     public string SesRegion { get; init; } = "ap-southeast-2";
     public string? SesEndpointUrl { get; init; }
     public string? SesConfigurationSet { get; init; }

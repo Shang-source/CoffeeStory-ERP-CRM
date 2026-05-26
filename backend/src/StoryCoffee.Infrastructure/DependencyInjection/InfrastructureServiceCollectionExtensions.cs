@@ -61,9 +61,11 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddOptions<EmailOptions>()
             .Bind(configuration.GetSection("Email"))
             .Validate(options => !string.IsNullOrWhiteSpace(options.Provider), "Email:Provider is required.")
-            .Validate(options => IsSupportedEmailProvider(options.Provider), "Email:Provider must be Stub, Smtp, or SES.")
+            .Validate(options => IsSupportedEmailProvider(options.Provider), "Email:Provider must be Stub, Smtp, Resend, or SES.")
             .Validate(options => !IsSmtpEmailProvider(options.Provider) || !string.IsNullOrWhiteSpace(options.SmtpHost), "Email:SmtpHost is required when SMTP is enabled.")
             .Validate(options => options.SmtpPort > 0, "Email:SmtpPort must be greater than zero.")
+            .Validate(options => !IsResendEmailProvider(options.Provider) || !string.IsNullOrWhiteSpace(options.ResendApiKey), "Email:ResendApiKey is required when Resend is enabled.")
+            .Validate(options => !IsResendEmailProvider(options.Provider) || Uri.TryCreate(options.ResendApiUrl, UriKind.Absolute, out _), "Email:ResendApiUrl must be an absolute URL when Resend is enabled.")
             .Validate(options => !IsSesEmailProvider(options.Provider) || !string.IsNullOrWhiteSpace(options.SesRegion), "Email:SesRegion is required when SES is enabled.")
             .ValidateOnStart();
         services.AddOptions<PortalOptions>()
@@ -135,6 +137,12 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IEmailDeliveryEventService, EmailDeliveryEventUseCase>();
         services.AddScoped<ISnsWebhookSecurityService, SnsWebhookSecurityService>();
         services.AddHttpClient<ISnsSubscriptionConfirmer, SnsSubscriptionConfirmer>();
+        services.AddHttpClient<ResendEmailSender>((provider, client) =>
+        {
+            var emailOptions = provider.GetRequiredService<IOptions<EmailOptions>>().Value;
+            client.BaseAddress = new Uri(emailOptions.ResendApiUrl);
+            client.Timeout = TimeSpan.FromSeconds(30);
+        });
         services.AddSingleton<IAmazonSimpleEmailServiceV2>(provider =>
         {
             var emailOptions = provider.GetRequiredService<IOptions<EmailOptions>>().Value;
@@ -156,6 +164,11 @@ public static class InfrastructureServiceCollectionExtensions
             if (IsSmtpEmailProvider(emailOptions.Provider))
             {
                 return ActivatorUtilities.CreateInstance<SmtpEmailSender>(provider);
+            }
+
+            if (IsResendEmailProvider(emailOptions.Provider))
+            {
+                return provider.GetRequiredService<ResendEmailSender>();
             }
 
             if (IsSesEmailProvider(emailOptions.Provider))
@@ -193,6 +206,11 @@ public static class InfrastructureServiceCollectionExtensions
     private static bool IsSmtpEmailProvider(string provider)
     {
         return provider.Equals("Smtp", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsResendEmailProvider(string provider)
+    {
+        return provider.Equals("Resend", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsSesEmailProvider(string provider)

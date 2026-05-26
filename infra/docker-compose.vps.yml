@@ -76,6 +76,8 @@ services:
       Email__Provider: ${EMAIL_PROVIDER:-Smtp}
       Email__FromName: ${EMAIL_FROM_NAME:-StoryCoffee}
       Email__FromAddress: ${EMAIL_FROM_ADDRESS}
+      Email__ResendApiKey: ${EMAIL_RESEND_API_KEY:-}
+      Email__ResendApiUrl: ${EMAIL_RESEND_API_URL:-https://api.resend.com/}
       Email__SmtpHost: ${EMAIL_SMTP_HOST:-smtp-relay.brevo.com}
       Email__SmtpPort: ${EMAIL_SMTP_PORT:-587}
       Email__SmtpUsername: ${EMAIL_SMTP_USERNAME:-}

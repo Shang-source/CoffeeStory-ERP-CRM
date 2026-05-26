@@ -119,7 +119,27 @@ Default:
 Email__Provider=Stub
 ```
 
-This marks the email workflow as sent without sending real email. For a customer-facing demo with real messages, switch to SMTP:
+This marks the email workflow as sent without sending real email.
+
+For a customer-facing demo with real messages, use Resend:
+
+```env
+Email__Provider=Resend
+Email__ResendApiKey=re_xxxxxxxxx
+Email__ResendApiUrl=https://api.resend.com/
+Email__FromName=StoryCoffee
+Email__FromAddress=onboarding@resend.dev
+```
+
+`onboarding@resend.dev` is only suitable for testing to the email address attached to the Resend account. To send to customers, add and verify your own domain in Resend, then set:
+
+```env
+Email__FromAddress=no-reply@yourdomain.com
+```
+
+Resend's free transactional tier is enough for the current demo volume, but it has daily and monthly limits.
+
+SMTP remains available if you later switch providers:
 
 ```env
 Email__Provider=Smtp

@@ -54,6 +54,7 @@ Edit `.env.production` and replace every `replace-with-*` value. Minimum require
 - `JWT_SECRET`
 - `DOCUMENT_STORAGE_SIGNING_SECRET`
 - `EMAIL_FROM_ADDRESS`
+- Resend values if `EMAIL_PROVIDER=Resend`
 - SMTP values if `EMAIL_PROVIDER=Smtp`
 
 Use these commands locally or on the server to generate strong secrets:
@@ -179,10 +180,9 @@ Before restoring, record:
 For the lowest-cost first deployment, use SMTP through Brevo:
 
 ```text
-EMAIL_PROVIDER=Smtp
-EMAIL_SMTP_HOST=smtp-relay.brevo.com
-EMAIL_SMTP_PORT=587
-EMAIL_USE_START_TLS=true
+EMAIL_PROVIDER=Resend
+EMAIL_RESEND_API_KEY=re_xxxxxxxxx
+EMAIL_FROM_ADDRESS=no-reply@yourdomain.com
 ```
 
 The sending domain must have SPF/DKIM/DMARC records configured before inviting real customers.
