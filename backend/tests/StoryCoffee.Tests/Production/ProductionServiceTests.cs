@@ -11,7 +11,7 @@ namespace StoryCoffee.Tests;
 public sealed class ProductionServiceTests
 {
     [Fact]
-    public async Task GetCurrent_AggregatesInProductionAndReadyToShipItems()
+    public async Task GetCurrent_AggregatesOnlyInProductionItemsWithCustomerContext()
     {
         var services = await CreateServices();
         var service = services.GetRequiredService<IProductionService>();
@@ -20,7 +20,9 @@ public sealed class ProductionServiceTests
 
         Assert.NotEmpty(items);
         Assert.Contains(items, item => item.OrderNumbers.Contains("ORD-202605-0002"));
+        Assert.Contains(items, item => item.RelatedOrders.Any(order => order.OrderNumber == "ORD-202605-0002" && order.CustomerName == "Wellington Coffee House"));
         Assert.DoesNotContain(items, item => item.OrderNumbers.Contains("ORD-202605-0001"));
+        Assert.DoesNotContain(items, item => item.OrderNumbers.Contains("ORD-202605-0003"));
     }
 
     [Fact]

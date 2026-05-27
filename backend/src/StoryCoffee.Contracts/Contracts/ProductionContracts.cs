@@ -12,7 +12,14 @@ public sealed record ProductionItemDto(
     int ProducedQuantity,
     ProductionStatus Status,
     IReadOnlyList<Guid> OrderIds,
-    IReadOnlyList<string> OrderNumbers);
+    IReadOnlyList<string> OrderNumbers,
+    IReadOnlyList<ProductionRelatedOrderDto> RelatedOrders);
+
+public sealed record ProductionRelatedOrderDto(
+    Guid OrderId,
+    string OrderNumber,
+    Guid CustomerId,
+    string CustomerName);
 
 public sealed record ProductionBatchDto(
     Guid Id,

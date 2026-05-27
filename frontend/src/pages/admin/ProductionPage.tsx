@@ -57,6 +57,11 @@ export default function ProductionList() {
     toast.success('Exporting production list to CSV');
   };
 
+  const getRelatedOrders = (item: ProductionItem) =>
+    item.relatedOrders.length > 0
+      ? item.relatedOrders
+      : item.orderNumbers.map((orderNumber) => ({ orderId: orderNumber, orderNumber, customerName: '' }));
+
   const getActionButton = (item: ProductionItem) => {
     if (item.status === 'Pending') {
       return (
@@ -110,7 +115,7 @@ export default function ProductionList() {
             Production List
           </Typography>
           <Typography variant="body1" color="text.secondary">
-            This page summarizes in-production orders into product quantities for production.
+            This page groups in-production orders by product. An order becomes ready to ship only after every related product line is completed.
           </Typography>
         </div>
         <Box>
@@ -124,6 +129,10 @@ export default function ProductionList() {
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 3 }}>{error instanceof Error ? error.message : 'Unable to load production list'}</Alert>}
+
+      <Alert severity="info" sx={{ mb: 3 }}>
+        Related orders show the customer name. If an order contains multiple products, complete all of its product rows before the order moves to Ready to Ship.
+      </Alert>
 
       <Card sx={{ mb: 3 }}>
         <CardContent>
@@ -178,8 +187,13 @@ export default function ProductionList() {
                     </TableCell>
                     <TableCell>
                       <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                        {item.orderNumbers.map((orderNum) => (
-                          <Chip key={orderNum} label={orderNum} size="small" variant="outlined" />
+                        {getRelatedOrders(item).map((order) => (
+                          <Chip
+                            key={order.orderId}
+                            label={order.customerName ? `${order.orderNumber} · ${order.customerName}` : order.orderNumber}
+                            size="small"
+                            variant="outlined"
+                          />
                         ))}
                       </Box>
                     </TableCell>

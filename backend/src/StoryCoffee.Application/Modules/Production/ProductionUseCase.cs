@@ -99,7 +99,7 @@ public sealed class ProductionUseCase(
         var item = await production.GetProductionItem(productionItemId, cancellationToken)
             ?? throw new KeyNotFoundException("Production item not found.");
         var rows = await BuildRows(item.ProductionBatchId, cancellationToken);
-        return new ProductionItemUpdateResult(rows.First(row => row.Id == productionItemId));
+        return new ProductionItemUpdateResult(rows.FirstOrDefault(row => row.Id == productionItemId) ?? ToDto(item, []));
     }
 
     private async Task<IReadOnlyList<ProductionItemDto>> BuildRows(Guid batchId, CancellationToken cancellationToken)
@@ -107,24 +107,27 @@ public sealed class ProductionUseCase(
         var items = await production.GetProductionItems(batchId, cancellationToken);
         var orders = await production.GetActiveProductionOrders(cancellationToken);
 
-        return items.Select(item =>
-        {
-            var relatedOrders = orders
-                .Where(order => order.Items.Any(orderItem => orderItem.ProductId == item.ProductId))
-                .ToList();
+        return items
+            .Select(item =>
+            {
+                var relatedOrders = orders
+                    .Where(order => order.Items.Any(orderItem => orderItem.ProductId == item.ProductId))
+                    .Select(order => new ProductionRelatedOrderDto(
+                        order.Id,
+                        order.OrderNumber,
+                        order.CustomerId,
+                        order.Customer.BusinessName))
+                    .ToList();
 
-            return new ProductionItemDto(
-                item.Id,
-                item.ProductionBatchId,
-                item.ProductId,
-                item.ProductNameSnapshot,
-                item.SkuSnapshot,
-                item.TotalQuantity,
-                item.ProducedQuantity,
-                item.Status,
-                relatedOrders.Select(order => order.Id).ToList(),
-                relatedOrders.Select(order => order.OrderNumber).ToList());
-        }).ToList();
+                return new
+                {
+                    Item = item,
+                    RelatedOrders = relatedOrders
+                };
+            })
+            .Where(row => row.RelatedOrders.Count > 0)
+            .Select(row => ToDto(row.Item, row.RelatedOrders))
+            .ToList();
     }
 
     private async Task<Guid> EnsureCurrentBatchFromActiveOrders(Guid? actorUserId, CancellationToken cancellationToken)
@@ -277,6 +280,11 @@ public sealed class ProductionUseCase(
             return ProductionStatus.Completed;
         }
 
+        if (requestedStatus == ProductionStatus.Completed)
+        {
+            return producedQuantity > 0 ? ProductionStatus.InProgress : ProductionStatus.Pending;
+        }
+
         return requestedStatus ?? (producedQuantity > 0 ? ProductionStatus.InProgress : ProductionStatus.Pending);
     }
 
@@ -289,6 +297,22 @@ public sealed class ProductionUseCase(
             batch.Status,
             batch.CreatedAt,
             batch.UpdatedAt);
+    }
+
+    private static ProductionItemDto ToDto(ProductionItem item, IReadOnlyList<ProductionRelatedOrderDto> relatedOrders)
+    {
+        return new ProductionItemDto(
+            item.Id,
+            item.ProductionBatchId,
+            item.ProductId,
+            item.ProductNameSnapshot,
+            item.SkuSnapshot,
+            item.TotalQuantity,
+            item.ProducedQuantity,
+            item.Status,
+            relatedOrders.Select(order => order.OrderId).ToList(),
+            relatedOrders.Select(order => order.OrderNumber).ToList(),
+            relatedOrders);
     }
 
     private static void Require(bool condition, string message)

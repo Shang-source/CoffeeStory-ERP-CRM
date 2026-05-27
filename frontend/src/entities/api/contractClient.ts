@@ -741,6 +741,12 @@ function parseProductionItem(item: ApiProductionItem | ProductionItem): Producti
     status: required(item.status, 'productionItem.status'),
     orderIds: item.orderIds ?? [],
     orderNumbers: item.orderNumbers ?? [],
+    relatedOrders: (item.relatedOrders ?? []).map((order) => ({
+      orderId: required(order.orderId, 'productionItem.relatedOrders.orderId'),
+      orderNumber: required(order.orderNumber, 'productionItem.relatedOrders.orderNumber'),
+      customerId: required(order.customerId, 'productionItem.relatedOrders.customerId'),
+      customerName: required(order.customerName, 'productionItem.relatedOrders.customerName'),
+    })),
   };
 }
 

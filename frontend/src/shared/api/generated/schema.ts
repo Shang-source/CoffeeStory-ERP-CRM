@@ -3339,6 +3339,15 @@ export interface components {
             status?: components["schemas"]["ProductionStatus"];
             orderIds?: string[] | null;
             orderNumbers?: string[] | null;
+            relatedOrders?: components["schemas"]["ProductionRelatedOrderDto"][] | null;
+        };
+        ProductionRelatedOrderDto: {
+            /** Format: uuid */
+            orderId?: string;
+            orderNumber?: string | null;
+            /** Format: uuid */
+            customerId?: string;
+            customerName?: string | null;
         };
         ProductionItemUpdateResponse: {
             productionItem?: components["schemas"]["ProductionItemDto"];

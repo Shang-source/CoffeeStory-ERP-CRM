@@ -71,8 +71,9 @@ public sealed class EfProductionRepository(AppDbContext db) : IProductionReposit
     {
         return await db.Orders
             .AsNoTracking()
+            .Include(order => order.Customer)
             .Include(order => order.Items)
-            .Where(order => order.OrderStatus == OrderStatus.InProduction || order.OrderStatus == OrderStatus.ReadyToShip)
+            .Where(order => order.OrderStatus == OrderStatus.InProduction)
             .OrderBy(order => order.OrderNumber)
             .ToListAsync(cancellationToken);
     }

@@ -60,6 +60,14 @@ export interface ProductionItem {
   status: ProductionStatus;
   orderIds: string[];
   orderNumbers: string[];
+  relatedOrders: ProductionRelatedOrder[];
+}
+
+export interface ProductionRelatedOrder {
+  orderId: string;
+  orderNumber: string;
+  customerId: string;
+  customerName: string;
 }
 
 export type ProductionBatchStatus =
