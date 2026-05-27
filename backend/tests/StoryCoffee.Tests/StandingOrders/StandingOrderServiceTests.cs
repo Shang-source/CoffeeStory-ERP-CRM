@@ -57,6 +57,50 @@ public sealed class StandingOrderServiceTests
     }
 
     [Fact]
+    public async Task UpdateCustomerStandingOrder_CreatesStandingOrderWhenMissing()
+    {
+        var services = await CreateServices();
+        var db = services.GetRequiredService<AppDbContext>();
+        var service = services.GetRequiredService<IStandingOrderService>();
+        var product = await db.Products.SingleAsync(x => x.Sku == "HB-1KG");
+        var customer = new Customer
+        {
+            Id = Guid.NewGuid(),
+            BusinessName = "New Online Customer",
+            ContactPerson = "Nora Fish",
+            Email = "nora@example.com",
+            Phone = "0204490606",
+            BillingAddress = "1 Queen Street, Auckland",
+            DeliveryAddress = "1 Queen Street, Auckland",
+            PaymentTerms = "Net 14",
+            AccountStatus = AccountStatus.Active
+        };
+        db.Customers.Add(customer);
+        await db.SaveChangesAsync();
+
+        var result = await service.UpdateCustomerStandingOrder(
+            customer.Id,
+            new UpdateStandingOrderRequest(
+                OrderFrequency.Weekly,
+                "Leave by the front door",
+                [new UpdateStandingOrderItemRequest(product.Id, 2, "Whole beans")]),
+            CancellationToken.None);
+
+        Assert.Equal(customer.Id, result.CustomerId);
+        Assert.Equal(StandingOrderStatus.Active, result.Status);
+        Assert.Equal(OrderFrequency.Weekly, result.Frequency);
+        Assert.Equal("Leave by the front door", result.DeliveryNotes);
+        Assert.Collection(result.Items, item =>
+        {
+            Assert.Equal(product.Id, item.ProductId);
+            Assert.Equal(2, item.Quantity);
+            Assert.Equal(product.Price, item.UnitPrice);
+            Assert.Equal("Whole beans", item.Notes);
+        });
+        Assert.Contains(await db.AuditLogs.ToListAsync(), log => log.Action == "CreatedCustomerStandingOrder" && log.EntityId == result.Id);
+    }
+
+    [Fact]
     public async Task CreateAndUpdateAdminStandingOrder_PersistsItemsAndAudit()
     {
         var services = await CreateServices();

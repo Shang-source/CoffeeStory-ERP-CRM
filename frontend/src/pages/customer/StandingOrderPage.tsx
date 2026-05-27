@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Button, TextField, Select, MenuItem, FormControl, InputLabel, IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Grid, Alert, CircularProgress } from '@mui/material';
 import { Add, Delete, Edit, Save } from '@mui/icons-material';
 import { toast } from 'sonner';
+import { useAuth } from '@/app/providers/AuthProvider';
 import { OrderFrequency, StandingOrder } from '@/entities/types';
 import { useCustomerProductsQuery } from '@/entities/product/api/productQueries';
 import { useCustomerStandingOrderQuery } from '@/entities/standingOrder/api/standingOrderQueries';
@@ -10,6 +11,7 @@ import { formatStandingOrderStatus, getStandingOrderStatusColor } from '@/shared
 import { StatusChip } from '@/shared/ui/StatusChip';
 
 export default function StandingOrderPage() {
+  const { user } = useAuth();
   const standingOrderQuery = useCustomerStandingOrderQuery();
   const productsQuery = useCustomerProductsQuery();
   const [standingOrder, setStandingOrder] = useState<StandingOrder | null>(null);
@@ -23,8 +25,14 @@ export default function StandingOrderPage() {
   useEffect(() => {
     if (standingOrderQuery.data) {
       setStandingOrder(standingOrderQuery.data);
+      return;
     }
-  }, [standingOrderQuery.data]);
+
+    if (standingOrderQuery.isSuccess && standingOrderQuery.data === null) {
+      setStandingOrder(createEmptyStandingOrder(user?.customerId));
+      setIsEditing(true);
+    }
+  }, [standingOrderQuery.data, standingOrderQuery.isSuccess, user?.customerId]);
 
   const saveStandingOrderMutation = useSaveCustomerStandingOrderMutation((updated) => {
     setStandingOrder(updated);
@@ -33,6 +41,11 @@ export default function StandingOrderPage() {
 
   const handleSave = async () => {
     if (!standingOrder) {
+      return;
+    }
+
+    if (standingOrder.items.length === 0) {
+      toast.error('Add at least one item before saving your standing order');
       return;
     }
 
@@ -106,22 +119,14 @@ export default function StandingOrderPage() {
   }
 
   if (!standingOrder) {
-    return (
-      <Box>
-        <Typography variant="h4" gutterBottom>
-          Standing Order
-        </Typography>
-        <Alert severity="info">
-          No standing order has been configured for your account yet. Please contact StoryCoffee to set up your recurring order before editing order details.
-        </Alert>
-      </Box>
-    );
+    return <Alert severity="info">Preparing your standing order form...</Alert>;
   }
 
   const estimatedTotal = standingOrder.items.reduce(
     (sum, item) => sum + item.quantity * item.unitPrice,
     0
   );
+  const isNewStandingOrder = !standingOrder.id;
 
   return (
     <Box>
@@ -130,7 +135,7 @@ export default function StandingOrderPage() {
         <Box>
           {isEditing ? (
             <Button variant="contained" startIcon={<Save />} onClick={handleSave} disabled={saveStandingOrderMutation.isPending}>
-              Save Changes
+              {isNewStandingOrder ? 'Create Standing Order' : 'Save Changes'}
             </Button>
           ) : (
             <Button variant="outlined" startIcon={<Edit />} onClick={() => setIsEditing(true)}>
@@ -144,6 +149,12 @@ export default function StandingOrderPage() {
         <Grid size={{ xs: 12, md: 8 }}>
           <Card>
             <CardContent>
+              {isNewStandingOrder && (
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  No standing order exists yet. Add your coffee items, choose a frequency, then create your standing order.
+                </Alert>
+              )}
+
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                 <Typography variant="h6">Order Items</Typography>
                 {isEditing && (
@@ -166,35 +177,43 @@ export default function StandingOrderPage() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {standingOrder.items.map((item) => (
-                      <TableRow key={item.id}>
-                        <TableCell>{item.product.name}</TableCell>
-                        <TableCell>{item.product.sku}</TableCell>
-                        <TableCell align="right">
-                          {isEditing ? (
-                            <TextField
-                              type="number"
-                              size="small"
-                              value={item.quantity}
-                              onChange={(e) => handleQuantityChange(item.id, parseInt(e.target.value, 10) || 1)}
-                              sx={{ width: 80 }}
-                              inputProps={{ min: 1 }}
-                            />
-                          ) : (
-                            item.quantity
-                          )}
+                    {standingOrder.items.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={isEditing ? 6 : 5} align="center">
+                          No items yet. Click Add Item to start your standing order.
                         </TableCell>
-                        <TableCell align="right">${item.unitPrice.toFixed(2)}</TableCell>
-                        <TableCell align="right">${(item.quantity * item.unitPrice).toFixed(2)}</TableCell>
-                        {isEditing && (
-                          <TableCell align="center">
-                            <IconButton size="small" color="error" onClick={() => handleRemoveItem(item.id)}>
-                              <Delete />
-                            </IconButton>
-                          </TableCell>
-                        )}
                       </TableRow>
-                    ))}
+                    ) : (
+                      standingOrder.items.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell>{item.product.name}</TableCell>
+                          <TableCell>{item.product.sku}</TableCell>
+                          <TableCell align="right">
+                            {isEditing ? (
+                              <TextField
+                                type="number"
+                                size="small"
+                                value={item.quantity}
+                                onChange={(e) => handleQuantityChange(item.id, parseInt(e.target.value, 10) || 1)}
+                                sx={{ width: 80 }}
+                                inputProps={{ min: 1 }}
+                              />
+                            ) : (
+                              item.quantity
+                            )}
+                          </TableCell>
+                          <TableCell align="right">${item.unitPrice.toFixed(2)}</TableCell>
+                          <TableCell align="right">${(item.quantity * item.unitPrice).toFixed(2)}</TableCell>
+                          {isEditing && (
+                            <TableCell align="center">
+                              <IconButton size="small" color="error" onClick={() => handleRemoveItem(item.id)}>
+                                <Delete />
+                              </IconButton>
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               </TableContainer>
@@ -323,4 +342,18 @@ export default function StandingOrderPage() {
       </Dialog>
     </Box>
   );
+}
+
+function createEmptyStandingOrder(customerId?: string): StandingOrder {
+  const nextClosingDate = new Date();
+  nextClosingDate.setDate(nextClosingDate.getDate() + 7);
+
+  return {
+    id: '',
+    customerId: customerId ?? '',
+    frequency: 'Weekly',
+    nextClosingDate,
+    status: 'Active',
+    items: [],
+  };
 }

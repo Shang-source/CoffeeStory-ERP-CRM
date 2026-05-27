@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeCustomerProduct, makeStandingOrder } from '@/entities/testing/fixtures';
 import StandingOrderPage from './StandingOrderPage';
 
@@ -22,6 +22,18 @@ vi.mock('@/features/standingOrderEditor/api/standingOrderEditorApi', () => ({
   updateCustomerStandingOrder: (...args: unknown[]) => updateCustomerStandingOrderMock(...args),
 }));
 
+vi.mock('@/app/providers/AuthProvider', () => ({
+  useAuth: () => ({
+    user: {
+      id: 'user-1',
+      email: 'nora@example.com',
+      role: 'Customer',
+      customerId: 'customer-1',
+      name: 'Nora Fish',
+    },
+  }),
+}));
+
 vi.mock('sonner', () => ({
   toast: {
     error: vi.fn(),
@@ -34,6 +46,10 @@ describe('Customer StandingOrderPage', () => {
     getCustomerStandingOrderMock.mockReset();
     getCustomerProductsMock.mockReset();
     updateCustomerStandingOrderMock.mockReset();
+  });
+
+  afterEach(() => {
+    cleanup();
   });
 
   it('adds new standing-order items using the customer effective price', async () => {
@@ -55,6 +71,18 @@ describe('Customer StandingOrderPage', () => {
       expect(screen.getAllByText('$35.00').length).toBeGreaterThan(0);
     });
     expect(screen.getByText('Estimated Total: $35.00')).toBeInTheDocument();
+  }, 20_000);
+
+  it('shows create mode when no standing order exists yet', async () => {
+    getCustomerStandingOrderMock.mockResolvedValue(null);
+    getCustomerProductsMock.mockResolvedValue([makeCustomerProduct()]);
+
+    renderWithQuery();
+
+    expect(await screen.findByText('No standing order exists yet. Add your coffee items, choose a frequency, then create your standing order.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create Standing Order' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add Item' })).toBeInTheDocument();
+    expect(screen.queryByText('Standing order not found.')).not.toBeInTheDocument();
   }, 20_000);
 });
 

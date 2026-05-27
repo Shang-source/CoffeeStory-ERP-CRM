@@ -84,18 +84,46 @@ public sealed class StandingOrderUseCase(IStandingOrderRepository standingOrderR
 
     public async Task<StandingOrderDto> UpdateCustomerStandingOrder(Guid customerId, UpdateStandingOrderRequest request, CancellationToken cancellationToken)
     {
-        var standingOrder = await standingOrderRepository.GetCustomerActiveStandingOrder(customerId, cancellationToken)
-            ?? throw new KeyNotFoundException("Standing order not found.");
-
         Require(request.Items.Count > 0, "Standing order must contain at least one item.");
         var products = await standingOrderRepository.GetActiveProducts(cancellationToken);
         var effectivePrices = await standingOrderRepository.GetCustomerEffectivePriceOverrides(customerId, products.Keys.ToList(), cancellationToken);
+        var standingOrder = await standingOrderRepository.GetCustomerActiveStandingOrder(customerId, cancellationToken);
+
+        if (standingOrder is null)
+        {
+            Require(await standingOrderRepository.CustomerExists(customerId, cancellationToken), "Customer not found.");
+
+            var newStandingOrder = new StandingOrder
+            {
+                Id = Guid.NewGuid(),
+                CustomerId = customerId,
+                Frequency = request.Frequency,
+                NextClosingDate = InitialNextClosingDate(request.Frequency, DateTimeOffset.UtcNow),
+                Status = StandingOrderStatus.Active,
+                DeliveryNotes = NormalizeOptional(request.DeliveryNotes),
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow
+            };
+            var newStandingOrderItems = BuildStandingOrderItems(newStandingOrder.Id, request.Items, products, effectivePrices);
+            newStandingOrder.Items = newStandingOrderItems;
+            standingOrderRepository.AddStandingOrder(newStandingOrder);
+            standingOrderRepository.AddAuditChange(
+                "CreatedCustomerStandingOrder",
+                "StandingOrder",
+                newStandingOrder.Id,
+                $"Created standing order for customer {newStandingOrder.CustomerId}",
+                null,
+                StandingOrderAuditValues(newStandingOrder.Frequency, newStandingOrder.DeliveryNotes, newStandingOrderItems));
+            await standingOrderRepository.SaveChanges(cancellationToken);
+            standingOrderRepository.ClearChangeTracker();
+            return (await standingOrderRepository.GetStandingOrder(newStandingOrder.Id, cancellationToken))!.ToDto();
+        }
 
         var existingItems = await standingOrderRepository.GetStandingOrderItems(standingOrder.Id, cancellationToken);
         var oldValues = StandingOrderAuditValues(standingOrder.Frequency, standingOrder.DeliveryNotes, existingItems);
         standingOrderRepository.RemoveStandingOrderItems(existingItems);
         standingOrder.Frequency = request.Frequency;
-        standingOrder.DeliveryNotes = request.DeliveryNotes;
+        standingOrder.DeliveryNotes = NormalizeOptional(request.DeliveryNotes);
         standingOrder.UpdatedAt = DateTimeOffset.UtcNow;
 
         var newItems = BuildStandingOrderItems(standingOrder.Id, request.Items, products, effectivePrices);
@@ -266,6 +294,18 @@ public sealed class StandingOrderUseCase(IStandingOrderRepository standingOrderR
             OrderFrequency.Monthly => current.AddMonths(1),
             OrderFrequency.ManualOnly => current,
             _ => current
+        };
+    }
+
+    private static DateTimeOffset InitialNextClosingDate(OrderFrequency frequency, DateTimeOffset now)
+    {
+        return frequency switch
+        {
+            OrderFrequency.Weekly => now.AddDays(7),
+            OrderFrequency.Fortnightly => now.AddDays(14),
+            OrderFrequency.Monthly => now.AddMonths(1),
+            OrderFrequency.ManualOnly => now,
+            _ => now.AddDays(7)
         };
     }
 

@@ -102,7 +102,7 @@ export default function CustomerDashboard() {
                 fullWidth
                 sx={{ mt: 2 }}
               >
-                Edit Standing Order
+                {standingOrder ? 'Edit Standing Order' : 'Create Standing Order'}
               </Button>
             </CardContent>
           </Card>
