@@ -32,6 +32,15 @@ public sealed class EfCustomerRepository(AppDbContext db, IClock clock) : ICusto
         return db.Users.AnyAsync(user => user.Email.ToLower() == normalizedEmail, cancellationToken);
     }
 
+    public Task<bool> HasSentCustomerInvite(Guid customerId, CancellationToken cancellationToken)
+    {
+        return db.EmailLogs.AnyAsync(log =>
+            log.RelatedEntityType == "CustomerInvite" &&
+            log.RelatedEntityId == customerId &&
+            log.Status == EmailStatus.Sent,
+            cancellationToken);
+    }
+
     public async Task<CustomerArchiveBlockers> GetArchiveBlockers(Guid customerId, CancellationToken cancellationToken)
     {
         var activeStandingOrders = await db.StandingOrders.CountAsync(

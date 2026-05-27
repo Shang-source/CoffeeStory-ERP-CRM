@@ -88,7 +88,38 @@ public sealed class CustomerServiceTests
         Assert.Equal("customer_archive_blocked", exception.Code);
     }
 
-    private static async Task<IServiceProvider> CreateServices()
+    [Fact]
+    public async Task SendCustomerInvite_WhenEmailProviderFails_ThrowsAndCanBeRetried()
+    {
+        var emailSender = new ToggleEmailSender { ShouldFail = true };
+        var services = await CreateServices(emailSender);
+        var service = services.GetRequiredService<ICustomerService>();
+        var suffix = Guid.NewGuid().ToString("N")[..8];
+        var created = await service.CreateCustomer(new CreateCustomerRequest(
+            $"Retry Invite Cafe {suffix}",
+            "Nora Fish",
+            $"retry.{suffix}@storycoffee.co.nz",
+            "0204490606",
+            "1 Retry Street",
+            "1 Retry Street",
+            "Net 14",
+            AccountStatus.Invited), CancellationToken.None);
+
+        var exception = await Assert.ThrowsAsync<ApiException>(() => service.SendCustomerInvite(created.Id, CancellationToken.None));
+        var db = services.GetRequiredService<AppDbContext>();
+        var failedLog = await db.EmailLogs.SingleAsync(log => log.RelatedEntityType == "CustomerInvite" && log.RelatedEntityId == created.Id);
+
+        emailSender.ShouldFail = false;
+        var resent = await service.SendCustomerInvite(created.Id, CancellationToken.None);
+
+        Assert.Equal("customer_invite_email_failed", exception.Code);
+        Assert.True(resent.HasPortalUser);
+        Assert.Equal(EmailStatus.Failed, failedLog.Status);
+        Assert.Equal(1, await db.Users.CountAsync(user => user.CustomerId == created.Id && user.Role == UserRole.Customer));
+        Assert.Equal(1, await db.EmailLogs.CountAsync(log => log.RelatedEntityType == "CustomerInvite" && log.RelatedEntityId == created.Id && log.Status == EmailStatus.Sent));
+    }
+
+    private static async Task<IServiceProvider> CreateServices(IEmailSender? emailSender = null)
     {
         var services = new ServiceCollection();
         var databaseName = $"customers-{Guid.NewGuid()}";
@@ -98,7 +129,14 @@ public sealed class CustomerServiceTests
         services.AddScoped<IUnitOfWork, EfUnitOfWork>();
         services.AddScoped<IPasswordHasher, PasswordHasher>();
         services.AddScoped<ICustomerRepository, EfCustomerRepository>();
-        services.AddScoped<IEmailSender, EmailSenderStub>();
+        if (emailSender is null)
+        {
+            services.AddScoped<IEmailSender, EmailSenderStub>();
+        }
+        else
+        {
+            services.AddSingleton(emailSender);
+        }
         services.AddScoped<IOutboxPublisher, OutboxPublisher>();
         services.AddSingleton<IPortalLinkProvider>(new TestPortalLinkProvider());
         services.AddScoped<ICustomerService, CustomerUseCase>();
@@ -110,5 +148,19 @@ public sealed class CustomerServiceTests
     private sealed class TestPortalLinkProvider : IPortalLinkProvider
     {
         public string LoginUrl => "http://localhost:8080";
+    }
+
+    private sealed class ToggleEmailSender : IEmailSender
+    {
+        public bool ShouldFail { get; set; }
+        public string ProviderName => "Toggle";
+        public Task QueueInvoiceEmail(Guid invoiceId, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        public Task<EmailSendResult> Send(EmailMessage message, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(ShouldFail
+                ? new EmailSendResult(false, null, "Simulated provider failure.")
+                : new EmailSendResult(true, $"toggle-{Guid.NewGuid():N}"));
+        }
     }
 }

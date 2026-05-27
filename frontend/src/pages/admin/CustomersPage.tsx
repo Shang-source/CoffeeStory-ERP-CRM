@@ -26,10 +26,10 @@ export default function Customers() {
   };
 
   const canSendInvite = (customer: Customer) =>
-    !customer.hasPortalUser &&
     customer.accountStatus !== 'Suspended' &&
     customer.accountStatus !== 'Archived' &&
-    customer.phone.trim().length > 0;
+    customer.phone.trim().length > 0 &&
+    (!customer.hasPortalUser || customer.accountStatus === 'Draft' || customer.accountStatus === 'Invited');
 
   if (isLoading) {
     return (
@@ -92,7 +92,7 @@ export default function Customers() {
                         size="small"
                         onClick={() => handleSendInvite(customer)}
                         disabled={!canSendInvite(customer) || sendInviteMutation.isPending}
-                        title={customer.hasPortalUser ? 'Portal user already exists' : 'Create portal user and send invite email'}
+                        title={customer.hasPortalUser ? 'Resend invite email' : 'Create portal user and send invite email'}
                       >
                         <Send />
                       </IconButton>

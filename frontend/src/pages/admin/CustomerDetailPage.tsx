@@ -70,10 +70,10 @@ export default function CustomerDetail() {
   };
 
   const canSendInvite = Boolean(customer) &&
-    !customer?.hasPortalUser &&
     customer?.accountStatus !== 'Suspended' &&
     customer?.accountStatus !== 'Archived' &&
-    customer?.phone.trim().length > 0;
+    customer?.phone.trim().length > 0 &&
+    (!customer?.hasPortalUser || customer?.accountStatus === 'Draft' || customer?.accountStatus === 'Invited');
 
   const handlePriceBookChange = (productId: string, update: Partial<CustomerPriceBookItem>) => {
     setPriceBookItems((currentItems) =>

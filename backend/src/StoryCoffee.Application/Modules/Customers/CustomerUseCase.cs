@@ -91,11 +91,6 @@ public sealed class CustomerUseCase(
             throw new ApiException(400, "customer_invite_blocked", "Suspended or archived customers cannot receive invite emails.");
         }
 
-        if (HasPortalUser(customer))
-        {
-            throw new ApiException(400, "customer_already_invited", "This customer already has a portal account.");
-        }
-
         var temporaryPassword = NormalizeTemporaryPassword(customer.Phone);
         if (temporaryPassword.Length < 8)
         {
@@ -103,34 +98,47 @@ public sealed class CustomerUseCase(
         }
 
         var email = NormalizeEmail(customer.Email);
-        if (await customers.UserEmailExists(email, cancellationToken))
+        var existingPortalUser = GetPortalUser(customer);
+        if (existingPortalUser is not null && customer.AccountStatus == AccountStatus.Active && await customers.HasSentCustomerInvite(customer.Id, cancellationToken))
+        {
+            throw new ApiException(400, "customer_already_invited", "This customer already has a portal account and has already been invited.");
+        }
+
+        if (existingPortalUser is null && await customers.UserEmailExists(email, cancellationToken))
         {
             throw new ApiException(400, "customer_email_already_used", "A portal user with this email already exists.");
         }
 
         var oldValues = CustomerAuditValues(customer);
         var now = clock.UtcNow;
-        var user = new User
+        if (existingPortalUser is null)
         {
-            Id = Guid.NewGuid(),
-            Email = email,
-            PasswordHash = passwordHasher.Hash(temporaryPassword),
-            DisplayName = customer.BusinessName,
-            Role = UserRole.Customer,
-            CustomerId = customer.Id,
-            Customer = customer,
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now
-        };
-        customers.AddUser(user);
+            var user = new User
+            {
+                Id = Guid.NewGuid(),
+                Email = email,
+                PasswordHash = passwordHasher.Hash(temporaryPassword),
+                DisplayName = customer.BusinessName,
+                Role = UserRole.Customer,
+                CustomerId = customer.Id,
+                Customer = customer,
+                IsActive = true,
+                CreatedAt = now,
+                UpdatedAt = now
+            };
+            customers.AddUser(user);
+        }
 
         var subject = "Welcome to StoryCoffee";
         var emailLog = customers.AddEmailLog("CustomerInvite", customer.Id, customer.Email, subject, EmailStatus.Pending);
         var renderedEmail = BuildInviteEmail(customer, email, temporaryPassword);
         var message = new EmailMessage(customer.Email, subject, renderedEmail.TextBody, HtmlBody: renderedEmail.HtmlBody);
         var outboxMessage = outbox.EnqueueEmail(new OutboxEmailPayload("CustomerInvite", customer.Id, emailLog.Id, message.RecipientEmail, message.Subject, message.Body, HtmlBody: message.HtmlBody));
-        customers.AddAuditChange("SentCustomerInvite", "Customer", customer.Id, $"Created portal account and sent invite email to {customer.Email}", oldValues, CustomerAuditValues(customer));
+        var auditAction = existingPortalUser is null ? "SentCustomerInvite" : "ResentCustomerInvite";
+        var auditMessage = existingPortalUser is null
+            ? $"Created portal account and sent invite email to {customer.Email}"
+            : $"Resent invite email to {customer.Email}";
+        customers.AddAuditChange(auditAction, "Customer", customer.Id, auditMessage, oldValues, CustomerAuditValues(customer));
         await unitOfWork.SaveChanges(cancellationToken);
 
         var sendResult = await emailSender.Send(message, cancellationToken);
@@ -155,6 +163,14 @@ public sealed class CustomerUseCase(
         }
 
         await unitOfWork.SaveChanges(cancellationToken);
+        if (!sendResult.Succeeded)
+        {
+            throw new ApiException(
+                502,
+                "customer_invite_email_failed",
+                $"Invite email could not be sent. Check the email provider configuration and retry. Provider error: {emailLog.ErrorMessage}");
+        }
+
         return customer.ToDto();
     }
 
@@ -236,7 +252,12 @@ public sealed class CustomerUseCase(
 
     private static bool HasPortalUser(Customer customer)
     {
-        return customer.Users.Any(user => user.Role == UserRole.Customer && user.IsActive);
+        return GetPortalUser(customer) is not null;
+    }
+
+    private static User? GetPortalUser(Customer customer)
+    {
+        return customer.Users.FirstOrDefault(user => user.Role == UserRole.Customer && user.IsActive);
     }
 
     private static string NormalizeEmail(string? email)
