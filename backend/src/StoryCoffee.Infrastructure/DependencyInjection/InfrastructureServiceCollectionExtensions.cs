@@ -63,7 +63,8 @@ public static class InfrastructureServiceCollectionExtensions
             .Validate(options => !string.IsNullOrWhiteSpace(options.Provider), "Email:Provider is required.")
             .Validate(options => IsSupportedEmailProvider(options.Provider), "Email:Provider must be Stub, Smtp, Resend, or SES.")
             .Validate(options => !IsSmtpEmailProvider(options.Provider) || !string.IsNullOrWhiteSpace(options.SmtpHost), "Email:SmtpHost is required when SMTP is enabled.")
-            .Validate(options => options.SmtpPort > 0, "Email:SmtpPort must be greater than zero.")
+            .Validate(options => !IsSmtpEmailProvider(options.Provider) || options.SmtpPort > 0, "Email:SmtpPort must be greater than zero when SMTP is enabled.")
+            .Validate(options => IsStubEmailProvider(options.Provider) || !string.IsNullOrWhiteSpace(options.FromAddress), "Email:FromAddress is required when email sending is enabled.")
             .Validate(options => !IsResendEmailProvider(options.Provider) || !string.IsNullOrWhiteSpace(options.ResendApiKey), "Email:ResendApiKey is required when Resend is enabled.")
             .Validate(options => !IsResendEmailProvider(options.Provider) || Uri.TryCreate(options.ResendApiUrl, UriKind.Absolute, out _), "Email:ResendApiUrl must be an absolute URL when Resend is enabled.")
             .Validate(options => !IsSesEmailProvider(options.Provider) || !string.IsNullOrWhiteSpace(options.SesRegion), "Email:SesRegion is required when SES is enabled.")
@@ -200,7 +201,13 @@ public static class InfrastructureServiceCollectionExtensions
     {
         return provider.Equals("Stub", StringComparison.OrdinalIgnoreCase)
             || IsSmtpEmailProvider(provider)
+            || IsResendEmailProvider(provider)
             || IsSesEmailProvider(provider);
+    }
+
+    private static bool IsStubEmailProvider(string provider)
+    {
+        return provider.Equals("Stub", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsSmtpEmailProvider(string provider)
