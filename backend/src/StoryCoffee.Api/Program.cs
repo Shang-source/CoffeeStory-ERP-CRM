@@ -31,7 +31,27 @@ app.UseMiddleware<ApiExceptionMiddleware>();
 app.UseMiddleware<JwtAuthenticationMiddleware>();
 app.UseMiddleware<CustomerAccountStatusMiddleware>();
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = context =>
+    {
+        var path = context.File.PhysicalPath ?? context.Context.Request.Path.Value ?? "";
+        if (path.Contains($"{Path.DirectorySeparatorChar}assets{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
+            || context.Context.Request.Path.StartsWithSegments("/assets"))
+        {
+            context.Context.Response.Headers.CacheControl = "public,max-age=31536000,immutable";
+            return;
+        }
+
+        if (path.EndsWith("index.html", StringComparison.OrdinalIgnoreCase)
+            || context.Context.Request.Path.Value?.EndsWith(".html", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            context.Context.Response.Headers.CacheControl = "no-store,no-cache,must-revalidate";
+            context.Context.Response.Headers.Pragma = "no-cache";
+            context.Context.Response.Headers.Expires = "0";
+        }
+    }
+});
 app.MapControllers();
 app.MapFallback(async context =>
 {
@@ -51,6 +71,9 @@ app.MapFallback(async context =>
     }
 
     context.Response.ContentType = "text/html; charset=utf-8";
+    context.Response.Headers.CacheControl = "no-store,no-cache,must-revalidate";
+    context.Response.Headers.Pragma = "no-cache";
+    context.Response.Headers.Expires = "0";
     await context.Response.SendFileAsync(indexPath);
 });
 
