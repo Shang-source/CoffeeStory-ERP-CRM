@@ -1,10 +1,57 @@
-import { useState } from 'react';
-import { Box, Typography, Card, CardContent, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Chip, IconButton, Collapse, Alert, CircularProgress } from '@mui/material';
+import { useMemo, useState } from 'react';
+import { Alert, Box, Card, CardContent, Chip, Collapse, Grid, IconButton, Stack, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs, TextField, Typography, CircularProgress } from '@mui/material';
 import { Send, Download, KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
 import { formatInvoiceStatus, getInvoiceStatusColor } from '@/shared/status/statusFormat';
 import { Invoice } from '@/entities/types';
 import { useAdminInvoicesQuery } from '@/entities/invoice/api/invoiceQueries';
 import { useDownloadInvoicePdfMutation, useSendInvoiceEmailMutation } from '@/features/invoiceActions/model/invoiceActionsMutations';
+
+type InvoiceTab = 'needToSend' | 'awaitingPayment' | 'overdue' | 'paid' | 'failed' | 'all';
+
+const invoiceTabs: Array<{ value: InvoiceTab; label: string; predicate: (invoice: Invoice) => boolean }> = [
+  { value: 'needToSend', label: 'Need to Send', predicate: (invoice) => ['Draft', 'Issued'].includes(invoice.status) && invoice.emailStatus !== 'Sent' },
+  { value: 'awaitingPayment', label: 'Awaiting Payment', predicate: (invoice) => ['Unpaid', 'PartiallyPaid'].includes(invoice.status) },
+  { value: 'overdue', label: 'Overdue', predicate: (invoice) => invoice.status === 'Overdue' },
+  { value: 'paid', label: 'Paid', predicate: (invoice) => invoice.status === 'Paid' },
+  { value: 'failed', label: 'Failed', predicate: (invoice) => ['Failed', 'Bounced'].includes(invoice.emailStatus ?? 'NotSent') },
+  { value: 'all', label: 'All', predicate: () => true },
+];
+
+function money(value: number) {
+  return `$${value.toFixed(2)}`;
+}
+
+function invoiceMatchesSearch(invoice: Invoice, query: string) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  const searchableText = [
+    invoice.invoiceNumber,
+    invoice.customer?.businessName,
+    invoice.customer?.contactPerson,
+    invoice.customer?.email,
+    invoice.totalAmount.toFixed(2),
+    invoice.outstandingAmount.toFixed(2),
+    invoice.status,
+    invoice.emailStatus,
+  ].filter(Boolean).join(' ').toLowerCase();
+
+  return searchableText.includes(normalizedQuery);
+}
+
+function SummaryCard({ label, value, helper }: { label: string; value: string; helper: string }) {
+  return (
+    <Card variant="outlined">
+      <CardContent>
+        <Typography variant="body2" color="text.secondary">{label}</Typography>
+        <Typography variant="h5" sx={{ my: 0.5 }}>{value}</Typography>
+        <Typography variant="caption" color="text.secondary">{helper}</Typography>
+      </CardContent>
+    </Card>
+  );
+}
 
 function InvoiceRow({
   invoice,
@@ -105,9 +152,22 @@ function InvoiceRow({
 }
 
 export default function Invoices() {
+  const [tab, setTab] = useState<InvoiceTab>('needToSend');
+  const [search, setSearch] = useState('');
   const { data: invoices = [], isLoading, error } = useAdminInvoicesQuery();
   const sendEmailMutation = useSendInvoiceEmailMutation();
   const downloadInvoiceMutation = useDownloadInvoicePdfMutation('admin');
+  const searchedInvoices = useMemo(() => invoices.filter((invoice) => invoiceMatchesSearch(invoice, search)), [invoices, search]);
+  const currentTab = invoiceTabs.find((item) => item.value === tab) ?? invoiceTabs[0];
+  const visibleInvoices = useMemo(() => searchedInvoices.filter(currentTab.predicate), [searchedInvoices, currentTab]);
+  const tabCounts = useMemo(() => Object.fromEntries(invoiceTabs.map((item) => [item.value, searchedInvoices.filter(item.predicate).length])), [searchedInvoices]);
+  const openAmount = invoices
+    .filter((invoice) => ['Unpaid', 'PartiallyPaid', 'Overdue'].includes(invoice.status))
+    .reduce((sum, invoice) => sum + invoice.outstandingAmount, 0);
+  const overdueAmount = invoices
+    .filter((invoice) => invoice.status === 'Overdue')
+    .reduce((sum, invoice) => sum + invoice.outstandingAmount, 0);
+  const failedEmailCount = invoices.filter((invoice) => ['Failed', 'Bounced'].includes(invoice.emailStatus ?? 'NotSent')).length;
 
   if (isLoading) {
     return (
@@ -123,8 +183,20 @@ export default function Invoices() {
         Invoices
       </Typography>
       <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-        Manage customer invoices
+        Find invoices by send status, payment status, customer, or amount
       </Typography>
+
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid size={{ xs: 12, md: 4 }}>
+          <SummaryCard label="Open amount" value={money(openAmount)} helper="Unpaid, partial, and overdue invoices" />
+        </Grid>
+        <Grid size={{ xs: 12, md: 4 }}>
+          <SummaryCard label="Overdue amount" value={money(overdueAmount)} helper="Invoices requiring follow-up" />
+        </Grid>
+        <Grid size={{ xs: 12, md: 4 }}>
+          <SummaryCard label="Email failures" value={`${failedEmailCount}`} helper="Failed or bounced invoice emails" />
+        </Grid>
+      </Grid>
 
       {error && (
         <Alert severity="error" sx={{ mb: 3 }}>
@@ -133,7 +205,21 @@ export default function Invoices() {
       )}
 
       <Card>
+        <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable" scrollButtons="auto" sx={{ borderBottom: 1, borderColor: 'divider' }}>
+          {invoiceTabs.map((item) => (
+            <Tab key={item.value} value={item.value} label={`${item.label} (${tabCounts[item.value] ?? 0})`} />
+          ))}
+        </Tabs>
         <CardContent>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>
+            <TextField
+              label="Search invoices, customers, emails, amounts"
+              size="small"
+              fullWidth
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </Stack>
           <TableContainer>
             <Table>
               <TableHead>
@@ -150,7 +236,7 @@ export default function Invoices() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {invoices.map((invoice) => (
+                {visibleInvoices.map((invoice) => (
                   <InvoiceRow
                     key={invoice.id}
                     invoice={invoice}
@@ -163,9 +249,9 @@ export default function Invoices() {
                     })}
                   />
                 ))}
-                {invoices.length === 0 && (
+                {visibleInvoices.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={9} align="center">No invoices found</TableCell>
+                    <TableCell colSpan={9} align="center">No invoices match this queue.</TableCell>
                   </TableRow>
                 )}
               </TableBody>

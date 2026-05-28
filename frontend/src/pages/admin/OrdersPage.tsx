@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Alert, Box, Button, Card, CardContent, Checkbox, Chip, Collapse, IconButton, Menu, MenuItem, Stack, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs, TextField, Toolbar, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, Checkbox, Chip, Collapse, FormControlLabel, IconButton, Menu, MenuItem, Stack, Switch, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs, TextField, Toolbar, Typography } from '@mui/material';
 import { KeyboardArrowDown, KeyboardArrowUp, MoreVert, PlayArrow, LocalShipping } from '@mui/icons-material';
 import { formatInvoiceStatus, getInvoiceStatusColor } from '@/shared/status/statusFormat';
 import { toast } from 'sonner';
@@ -19,12 +19,12 @@ const isAwaitingPayment = (order: Order) => ['Unpaid', 'PartiallyPaid', 'Overdue
 const isCompleted = (order: Order) => order.orderStatus === 'Completed' || order.invoiceStatus === 'Paid';
 
 const orderTabs: Array<{ value: OrderTab; label: string; predicate: (order: Order) => boolean }> = [
-  { value: 'all', label: 'All', predicate: () => true },
   { value: 'needProduction', label: 'Need Production', predicate: (order) => order.orderStatus === 'Generated' },
   { value: 'inProduction', label: 'In Production', predicate: (order) => order.orderStatus === 'InProduction' },
   { value: 'readyToShip', label: 'Ready to Ship', predicate: (order) => order.orderStatus === 'ReadyToShip' },
   { value: 'awaitingPayment', label: 'Awaiting Payment', predicate: isAwaitingPayment },
   { value: 'completed', label: 'Completed', predicate: isCompleted },
+  { value: 'all', label: 'All', predicate: () => true },
 ];
 
 const workflowStage = (order: Order): { label: string; color: string } => {
@@ -175,8 +175,9 @@ function OrderRow({ order, selected, onSelect, onOrderAction }: OrderRowProps) {
 
 export default function Orders() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<OrderTab>('all');
+  const [tab, setTab] = useState<OrderTab>('needProduction');
   const [filters, setFilters] = useState<OrderQueryParams>({});
+  const [showCancelled, setShowCancelled] = useState(false);
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const { data: orders = [], isLoading, error } = useAdminOrdersQuery(filters);
   const orderActionMutation = useOrderWorkflowMutation();
@@ -184,12 +185,19 @@ export default function Orders() {
   const batchShipAndInvoiceMutation = useBatchShipAndInvoiceMutation();
 
   const currentTab = orderTabs.find((item) => item.value === tab) ?? orderTabs[0];
-  const visibleOrders = useMemo(() => orders.filter(currentTab.predicate), [orders, currentTab]);
+  const activeOrders = useMemo(() => orders.filter((order) => order.orderStatus !== 'Cancelled'), [orders]);
+  const visibleOrders = useMemo(() => {
+    const sourceOrders = tab === 'all' && showCancelled ? orders : activeOrders;
+    return sourceOrders.filter(currentTab.predicate);
+  }, [activeOrders, orders, currentTab, showCancelled, tab]);
   const selectedOrders = orders.filter((order) => selectedOrderIds.has(order.id));
   const selectedGeneratedOrders = selectedOrders.filter((order) => order.orderStatus === 'Generated');
   const selectedReadyToShipOrders = selectedOrders.filter((order) => order.orderStatus === 'ReadyToShip');
 
-  const tabCounts = useMemo(() => Object.fromEntries(orderTabs.map((item) => [item.value, orders.filter(item.predicate).length])), [orders]);
+  const tabCounts = useMemo(() => Object.fromEntries(orderTabs.map((item) => {
+    const sourceOrders = item.value === 'all' && showCancelled ? orders : activeOrders;
+    return [item.value, sourceOrders.filter(item.predicate).length];
+  })), [activeOrders, orders, showCancelled]);
   const allVisibleSelected = visibleOrders.length > 0 && visibleOrders.every((order) => selectedOrderIds.has(order.id));
   const someVisibleSelected = visibleOrders.some((order) => selectedOrderIds.has(order.id)) && !allVisibleSelected;
 
@@ -270,10 +278,15 @@ export default function Orders() {
         <CardContent>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }}>
             <TextField label="Search orders, customers, products, SKU" size="small" fullWidth value={filters.search ?? ''} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value || undefined }))} />
-            <Typography variant="body2" color="text.secondary" sx={{ minWidth: 240 }}>
-              Use the queue tabs to manage status.
-            </Typography>
+            <FormControlLabel
+              sx={{ minWidth: 170 }}
+              control={<Switch checked={showCancelled} onChange={(event) => setShowCancelled(event.target.checked)} />}
+              label="Show cancelled"
+            />
           </Stack>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            Work queues hide cancelled orders by default. Turn on cancelled orders when you need history in All.
+          </Typography>
         </CardContent>
       </Card>
 

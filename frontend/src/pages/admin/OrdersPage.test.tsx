@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeOrder, makeProductionBatch } from '@/entities/testing/fixtures';
 import OrdersPage from './OrdersPage';
 
@@ -40,6 +40,10 @@ describe('OrdersPage', () => {
     batchSendOrdersToProductionMock.mockReset();
   });
 
+  afterEach(() => {
+    cleanup();
+  });
+
   it('uses the batch-to-production API for generated orders', async () => {
     const generatedOrder = makeOrder({ id: 'order-1', orderNumber: 'ORD-1001' });
     const secondGeneratedOrder = makeOrder({ id: 'order-2', orderNumber: 'ORD-1002' });
@@ -69,6 +73,25 @@ describe('OrdersPage', () => {
     });
     expect(await screen.findByRole('button', { name: 'Send selected to production (0)' })).toBeDisabled();
   }, 15000);
+
+  it('defaults to work queues and hides cancelled orders until All is explicitly expanded', async () => {
+    const generatedOrder = makeOrder({ id: 'order-1', orderNumber: 'ORD-1001' });
+    const cancelledOrder = makeOrder({ id: 'order-2', orderNumber: 'ORD-CANCELLED', orderStatus: 'Cancelled' });
+    getAdminOrdersMock.mockResolvedValue([generatedOrder, cancelledOrder]);
+
+    renderWithQuery();
+
+    await screen.findByText('ORD-1001');
+    expect(screen.queryByText('ORD-CANCELLED')).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Need Production (1)' })).toHaveAttribute('aria-selected', 'true');
+
+    fireEvent.click(screen.getByRole('tab', { name: 'All (1)' }));
+    expect(screen.queryByText('ORD-CANCELLED')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('switch', { name: 'Show cancelled' }));
+    expect(await screen.findByRole('tab', { name: 'All (2)' })).toBeInTheDocument();
+    expect(await screen.findByText('ORD-CANCELLED')).toBeInTheDocument();
+  });
 });
 
 function renderWithQuery() {
