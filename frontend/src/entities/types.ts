@@ -266,7 +266,7 @@ export interface AuditLog {
   message: string;
   oldValues?: string;
   newValues?: string;
-  createdAt: Date;
+  createdAt?: Date;
 }
 
 export interface EmailLog {
@@ -281,7 +281,7 @@ export interface EmailLog {
   lastProviderEventType?: string;
   lastProviderEventAt?: Date;
   errorMessage?: string;
-  createdAt: Date;
+  createdAt?: Date;
   sentAt?: Date;
 }
 

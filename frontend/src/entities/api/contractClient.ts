@@ -772,7 +772,7 @@ function parseAuditLog(log: ApiAuditLog | AuditLog): AuditLog {
     message: required(log.message, 'auditLog.message'),
     oldValues: log.oldValues ?? undefined,
     newValues: log.newValues ?? undefined,
-    createdAt: parseDate(log.createdAt, 'auditLog.createdAt'),
+    createdAt: parseOptionalDate(log.createdAt),
   };
 }
 
@@ -790,7 +790,7 @@ function parseEmailLog(log: ApiEmailLog | EmailLog): EmailLog {
     lastProviderEventType: providerFields.lastProviderEventType ?? undefined,
     lastProviderEventAt: parseOptionalDate(providerFields.lastProviderEventAt),
     errorMessage: log.errorMessage ?? undefined,
-    createdAt: parseDate(log.createdAt, 'emailLog.createdAt'),
+    createdAt: parseOptionalDate(log.createdAt),
     sentAt: parseOptionalDate(log.sentAt),
   };
 }
@@ -875,5 +875,7 @@ function parseOptionalDate(value: string | Date | null | undefined): Date | unde
   if (value === null || value === undefined || value === '') {
     return undefined;
   }
-  return parseDate(value, 'optionalDate');
+
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
 }

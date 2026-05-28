@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Alert, Box, Button, Card, CardContent, CircularProgress, MenuItem, Stack, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow, Tabs, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, MenuItem, Stack, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TablePagination, TableRow, Tabs, TextField, Typography } from '@mui/material';
 import { Download } from '@mui/icons-material';
 import { toast } from 'sonner';
 import { AuditLog, EmailLog, EmailStatus } from '@/entities/types';
@@ -160,7 +160,7 @@ export default function Logs() {
                   <TableBody>
                     {auditLogs.map((log) => (
                       <TableRow key={log.id}>
-                        <TableCell>{log.createdAt.toLocaleString()}</TableCell>
+                        <TableCell>{formatDateTime(log.createdAt)}</TableCell>
                         <TableCell><Chip label={log.action} size="small" /></TableCell>
                         <TableCell>{log.entityType}</TableCell>
                         <TableCell>{log.actorRole ?? 'System'}</TableCell>
@@ -212,7 +212,7 @@ export default function Logs() {
                   <TableBody>
                     {emailLogs.map((log) => (
                       <TableRow key={log.id}>
-                        <TableCell>{log.createdAt.toLocaleString()}</TableCell>
+                        <TableCell>{formatDateTime(log.createdAt)}</TableCell>
                         <TableCell>{log.relatedEntityType}</TableCell>
                         <TableCell>{log.recipientEmail}</TableCell>
                         <TableCell>{log.subject}</TableCell>
@@ -225,9 +225,9 @@ export default function Logs() {
                         </TableCell>
                         <TableCell>
                           <Typography variant="body2">{log.lastProviderEventType ?? 'N/A'}</Typography>
-                          <Typography variant="caption" color="text.secondary">{log.lastProviderEventAt?.toLocaleString() ?? ''}</Typography>
+                          <Typography variant="caption" color="text.secondary">{formatDateTime(log.lastProviderEventAt, '')}</Typography>
                         </TableCell>
-                        <TableCell>{log.sentAt?.toLocaleString() ?? 'N/A'}</TableCell>
+                        <TableCell>{formatDateTime(log.sentAt)}</TableCell>
                       </TableRow>
                     ))}
                     {emailLogs.length === 0 && (
@@ -276,14 +276,23 @@ function formatAuditChanges(log: AuditLog) {
   return `Old: ${oldValues}\nNew: ${newValues}`;
 }
 
-function formatJson(value?: string) {
-  if (!value) {
+function formatDateTime(value: unknown, emptyLabel = 'N/A') {
+  if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+    return emptyLabel;
+  }
+
+  return value.toLocaleString();
+}
+
+function formatJson(value?: unknown) {
+  if (value === null || value === undefined || value === '') {
     return '';
   }
 
   try {
-    return JSON.stringify(JSON.parse(value), null, 2);
+    const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+    return JSON.stringify(parsed, null, 2);
   } catch {
-    return value;
+    return String(value);
   }
 }
