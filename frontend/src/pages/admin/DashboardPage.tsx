@@ -45,16 +45,26 @@ function formatMoney(value: number) {
   return `$${value.toFixed(2)}`;
 }
 
+function isValidDate(value: unknown): value is Date {
+  return value instanceof Date && !Number.isNaN(value.getTime());
+}
+
 function formatBusinessWeek(from: Date, to: Date) {
+  if (!isValidDate(from) || !isValidDate(to)) {
+    return 'Current business week';
+  }
+
   return `${dateFormatter.format(from)} – ${dateFormatter.format(to)}`;
 }
 
-function waitLabel(dates: Date[]) {
-  if (dates.length === 0) {
-    return 'No waiting items';
+function waitLabel(dates: Array<Date | undefined | null>, emptyLabel = 'No waiting items') {
+  const validDates = dates.filter(isValidDate);
+
+  if (validDates.length === 0) {
+    return emptyLabel;
   }
 
-  const oldest = dates.reduce((oldestDate, date) => date < oldestDate ? date : oldestDate, dates[0]);
+  const oldest = validDates.reduce((oldestDate, date) => date < oldestDate ? date : oldestDate, validDates[0]);
   const days = Math.max(0, Math.floor((Date.now() - oldest.getTime()) / 86_400_000));
   if (days === 0) {
     return 'Oldest: today';
@@ -359,7 +369,7 @@ export default function AdminDashboard() {
             accent={palette.blue}
             count={readyToShipOrders.length}
             metric={formatMoney(readyToShipOrders.reduce((sum, order) => sum + order.totalAmount, 0))}
-            oldest={waitLabel(readyToShipOrders.map((order) => order.updatedAt))}
+            oldest={waitLabel(readyToShipOrders.map((order) => order.generatedAt), 'Open queue')}
             actionLabel="Ship all ready + send invoices"
             actionDisabled={readyToShipOrders.length === 0 || batchShipAndInvoice.isPending}
             onAction={() => batchShipAndInvoice.mutate(readyToShipOrders.map((order) => order.id))}
