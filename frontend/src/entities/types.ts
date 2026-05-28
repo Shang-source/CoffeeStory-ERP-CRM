@@ -306,6 +306,27 @@ export interface AdminDashboard {
   };
   recentOrders: Order[];
   overdueInvoices: Invoice[];
+  needProductionOrders: Order[];
+  productionItems: ProductionItem[];
+  readyToShipOrders: Order[];
+  awaitingPaymentInvoices: Invoice[];
+  problemItems: AdminDashboardProblemItem[];
+  businessWeek: AdminDashboardBusinessWeek;
+}
+
+export interface AdminDashboardBusinessWeek {
+  from: Date;
+  to: Date;
+}
+
+export interface AdminDashboardProblemItem {
+  id: string;
+  type: string;
+  severity: 'Critical' | 'Warning' | 'Info' | string;
+  title: string;
+  description: string;
+  createdAt: Date;
+  targetPath: string;
 }
 
 export interface CustomerDashboard {

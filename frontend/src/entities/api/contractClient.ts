@@ -797,6 +797,8 @@ function parseEmailLog(log: ApiEmailLog | EmailLog): EmailLog {
 
 function parseAdminDashboard(dashboard: ApiAdminDashboard | AdminDashboard): AdminDashboard {
   const metrics = required(dashboard.metrics, 'adminDashboard.metrics');
+  const expandedDashboard = dashboard as ApiAdminDashboard & Partial<AdminDashboard>;
+  const businessWeek = expandedDashboard.businessWeek;
   return {
     metrics: {
       ordersThisWeek: required(metrics.ordersThisWeek, 'adminDashboard.metrics.ordersThisWeek'),
@@ -810,6 +812,23 @@ function parseAdminDashboard(dashboard: ApiAdminDashboard | AdminDashboard): Adm
     },
     recentOrders: parseOrders(dashboard.recentOrders ?? []),
     overdueInvoices: parseInvoices(dashboard.overdueInvoices ?? []),
+    needProductionOrders: parseOrders(expandedDashboard.needProductionOrders ?? []),
+    productionItems: parseProductionItems(expandedDashboard.productionItems ?? []),
+    readyToShipOrders: parseOrders(expandedDashboard.readyToShipOrders ?? []),
+    awaitingPaymentInvoices: parseInvoices(expandedDashboard.awaitingPaymentInvoices ?? []),
+    problemItems: (expandedDashboard.problemItems ?? []).map((problem) => ({
+      id: required(problem.id, 'adminDashboard.problemItems.id'),
+      type: required(problem.type, 'adminDashboard.problemItems.type'),
+      severity: required(problem.severity, 'adminDashboard.problemItems.severity'),
+      title: required(problem.title, 'adminDashboard.problemItems.title'),
+      description: required(problem.description, 'adminDashboard.problemItems.description'),
+      createdAt: parseDate(problem.createdAt, 'adminDashboard.problemItems.createdAt'),
+      targetPath: required(problem.targetPath, 'adminDashboard.problemItems.targetPath'),
+    })),
+    businessWeek: {
+      from: parseDate(businessWeek?.from ?? new Date(), 'adminDashboard.businessWeek.from'),
+      to: parseDate(businessWeek?.to ?? new Date(), 'adminDashboard.businessWeek.to'),
+    },
   };
 }
 

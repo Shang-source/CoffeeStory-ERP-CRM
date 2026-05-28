@@ -2937,6 +2937,18 @@ export interface components {
             metrics?: components["schemas"]["AdminDashboardMetricsDto"];
             recentOrders?: components["schemas"]["OrderDto"][] | null;
             overdueInvoices?: components["schemas"]["InvoiceDto"][] | null;
+            needProductionOrders?: components["schemas"]["OrderDto"][] | null;
+            productionItems?: components["schemas"]["ProductionItemDto"][] | null;
+            readyToShipOrders?: components["schemas"]["OrderDto"][] | null;
+            awaitingPaymentInvoices?: components["schemas"]["InvoiceDto"][] | null;
+            problemItems?: components["schemas"]["AdminDashboardProblemItemDto"][] | null;
+            businessWeek?: components["schemas"]["AdminDashboardBusinessWeekDto"];
+        };
+        AdminDashboardBusinessWeekDto: {
+            /** Format: date-time */
+            from?: string;
+            /** Format: date-time */
+            to?: string;
         };
         AdminDashboardMetricsDto: {
             /** Format: int32 */
@@ -2955,6 +2967,16 @@ export interface components {
             totalCustomerCount?: number;
             /** Format: double */
             totalOutstanding?: number;
+        };
+        AdminDashboardProblemItemDto: {
+            id?: string | null;
+            type?: string | null;
+            severity?: string | null;
+            title?: string | null;
+            description?: string | null;
+            /** Format: date-time */
+            createdAt?: string;
+            targetPath?: string | null;
         };
         AuditLogDto: {
             /** Format: uuid */

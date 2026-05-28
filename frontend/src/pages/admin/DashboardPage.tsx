@@ -1,11 +1,23 @@
-import { Box, Button, Card, CardContent, Chip, Grid, Stack, Typography } from '@mui/material';
-import { AssignmentTurnedIn, CalendarMonth, Groups, LocalShipping, ReceiptLong, ShoppingCart, TrendingUp, WarningAmber } from '@mui/icons-material';
-import { formatOrderStatus, getOrderStatusColor } from '@/shared/status/statusFormat';
+import { Box, Button, Card, CardContent, Chip, Divider, Grid, Stack, Typography } from '@mui/material';
+import {
+  ArrowForward,
+  AssignmentTurnedIn,
+  Factory,
+  Inventory2,
+  LocalShipping,
+  Payment,
+  PlayArrow,
+  ReportProblem,
+} from '@mui/icons-material';
 import { useNavigate } from 'react-router';
 import { useAdminDashboardQuery } from '@/entities/dashboard/api/dashboardQueries';
+import { AdminDashboardProblemItem, Invoice, Order, ProductionItem } from '@/entities/types';
+import { useBatchToProductionMutation } from '@/features/batchToProduction/model/batchToProductionMutations';
+import { useBatchShipAndInvoiceMutation } from '@/features/orderWorkflow/model/orderWorkflowMutations';
 import { LoadingState } from '@/shared/ui/LoadingState';
 import { ErrorState } from '@/shared/ui/ErrorState';
 import { EmptyState } from '@/shared/ui/EmptyState';
+import { formatProductionStatus, getProductionStatusColor } from '@/shared/status/statusFormat';
 
 const palette = {
   terracotta: '#C45A3B',
@@ -13,184 +25,388 @@ const palette = {
   espresso: '#4B2E20',
   cream: '#F7F3EE',
   linen: '#FBF8F3',
-  sage: '#CFE1C6',
-  mint: '#D9EFE6',
-  blush: '#F6B5AE',
+  teal: '#16877D',
+  amber: '#E2760C',
+  blue: '#1976D2',
 };
 
-const dateRangeFormatter = new Intl.DateTimeFormat('en-NZ', {
+const dateFormatter = new Intl.DateTimeFormat('en-NZ', {
   month: 'short',
   day: 'numeric',
   year: 'numeric',
 });
 
-function formatCurrentWeekRange(now = new Date()) {
-  const startOfWeek = new Date(now);
-  const dayOffset = (startOfWeek.getDay() + 6) % 7;
-  startOfWeek.setDate(startOfWeek.getDate() - dayOffset);
-  startOfWeek.setHours(0, 0, 0, 0);
+const compactDateFormatter = new Intl.DateTimeFormat('en-NZ', {
+  month: 'short',
+  day: 'numeric',
+});
 
-  const endOfWeek = new Date(startOfWeek);
-  endOfWeek.setDate(startOfWeek.getDate() + 6);
-
-  return `${dateRangeFormatter.format(startOfWeek)} – ${dateRangeFormatter.format(endOfWeek)}`;
+function formatMoney(value: number) {
+  return `$${value.toFixed(2)}`;
 }
 
-function MetricCard({
+function formatBusinessWeek(from: Date, to: Date) {
+  return `${dateFormatter.format(from)} – ${dateFormatter.format(to)}`;
+}
+
+function waitLabel(dates: Date[]) {
+  if (dates.length === 0) {
+    return 'No waiting items';
+  }
+
+  const oldest = dates.reduce((oldestDate, date) => date < oldestDate ? date : oldestDate, dates[0]);
+  const days = Math.max(0, Math.floor((Date.now() - oldest.getTime()) / 86_400_000));
+  if (days === 0) {
+    return 'Oldest: today';
+  }
+
+  return `Oldest: ${days} day${days === 1 ? '' : 's'}`;
+}
+
+function customerName(orderOrInvoice: Order | Invoice) {
+  return orderOrInvoice.customer?.businessName ?? 'Unknown customer';
+}
+
+function QueueCard({
   title,
-  value,
   subtitle,
   icon,
   accent,
-  onClick,
+  count,
+  metric,
+  oldest,
+  actionLabel,
+  onAction,
+  actionDisabled,
+  children,
 }: {
   title: string;
-  value: string | number;
   subtitle: string;
   icon: React.ReactNode;
   accent: string;
-  onClick: () => void;
+  count: number;
+  metric: string;
+  oldest: string;
+  actionLabel: string;
+  onAction: () => void;
+  actionDisabled?: boolean;
+  children: React.ReactNode;
 }) {
   return (
-    <Card
-      onClick={onClick}
-      sx={{
-        height: '100%',
-        cursor: 'pointer',
-        border: `1px solid ${accent}55`,
-        background: `linear-gradient(135deg, #ffffff 0%, ${accent}1A 100%)`,
-        boxShadow: `0 10px 26px ${accent}24`,
-        borderRadius: 3,
-      }}
-    >
+    <Card sx={{ height: '100%', borderRadius: 3, border: `1px solid ${accent}44`, boxShadow: `0 10px 24px ${accent}1f` }}>
       <CardContent>
-        <Stack direction="row" spacing={2} alignItems="center">
-          <Box sx={{ width: 52, height: 52, borderRadius: '50%', bgcolor: accent, color: 'white', display: 'grid', placeItems: 'center' }}>
+        <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
+          <Box sx={{ width: 48, height: 48, borderRadius: 2, bgcolor: `${accent}18`, color: accent, display: 'grid', placeItems: 'center' }}>
             {icon}
           </Box>
-          <Box>
-            <Typography variant="body2" color="text.secondary">{title}</Typography>
-            <Typography variant="h3" sx={{ fontFamily: 'Georgia, serif', color: palette.espresso }}>{value}</Typography>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography variant="h6">{title}</Typography>
             <Typography variant="body2" color="text.secondary">{subtitle}</Typography>
           </Box>
+          <Chip label={count} sx={{ bgcolor: accent, color: 'white', fontWeight: 700 }} />
         </Stack>
+
+        <Stack direction="row" spacing={2} sx={{ mb: 2 }}>
+          <Box sx={{ flex: 1, p: 1.5, borderRadius: 2, bgcolor: palette.cream }}>
+            <Typography variant="caption" color="text.secondary">Workload</Typography>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{metric}</Typography>
+          </Box>
+          <Box sx={{ flex: 1, p: 1.5, borderRadius: 2, bgcolor: palette.cream }}>
+            <Typography variant="caption" color="text.secondary">Waiting</Typography>
+            <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>{oldest}</Typography>
+          </Box>
+        </Stack>
+
+        <Stack spacing={1} sx={{ minHeight: 206 }}>
+          {children}
+        </Stack>
+
+        <Button
+          fullWidth
+          variant="contained"
+          endIcon={<ArrowForward />}
+          onClick={onAction}
+          disabled={actionDisabled}
+          sx={{ mt: 2, bgcolor: accent, '&:hover': { bgcolor: accent } }}
+        >
+          {actionLabel}
+        </Button>
       </CardContent>
     </Card>
+  );
+}
+
+function EmptyQueue({ message }: { message: string }) {
+  return (
+    <Box sx={{ p: 2, borderRadius: 2, bgcolor: '#F5F5F5', color: 'text.secondary' }}>
+      <Typography variant="body2">{message}</Typography>
+    </Box>
+  );
+}
+
+function MoreRows({ count }: { count: number }) {
+  if (count <= 0) {
+    return null;
+  }
+
+  return <Typography variant="caption" color="text.secondary">+ {count} more item{count === 1 ? '' : 's'}</Typography>;
+}
+
+function OrderRows({ orders, mode }: { orders: Order[]; mode: 'production' | 'ship' }) {
+  if (orders.length === 0) {
+    return <EmptyQueue message={mode === 'production' ? 'No orders waiting for production.' : 'No orders ready to ship.'} />;
+  }
+
+  return (
+    <>
+      {orders.slice(0, 5).map((order) => (
+        <Stack key={order.id} direction="row" justifyContent="space-between" spacing={2} sx={{ py: 0.8, borderBottom: '1px solid #EEE' }}>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="body2" sx={{ fontWeight: 700 }}>{order.orderNumber}</Typography>
+            <Typography variant="caption" color="text.secondary">{customerName(order)}</Typography>
+          </Box>
+          <Typography variant="body2" sx={{ fontWeight: 700 }}>{formatMoney(order.totalAmount)}</Typography>
+        </Stack>
+      ))}
+      <MoreRows count={orders.length - 5} />
+    </>
+  );
+}
+
+function ProductionRows({ items }: { items: ProductionItem[] }) {
+  if (items.length === 0) {
+    return <EmptyQueue message="No product lines are currently in production." />;
+  }
+
+  return (
+    <>
+      {items.slice(0, 5).map((item) => (
+        <Stack key={item.id} direction="row" justifyContent="space-between" spacing={2} sx={{ py: 0.8, borderBottom: '1px solid #EEE' }}>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="body2" sx={{ fontWeight: 700 }}>{item.productName}</Typography>
+            <Typography variant="caption" color="text.secondary">
+              {item.relatedOrders.map((order) => order.customerName).join(', ')}
+            </Typography>
+          </Box>
+          <Stack alignItems="flex-end" spacing={0.5}>
+            <Typography variant="body2" sx={{ fontWeight: 700 }}>{item.producedQuantity} / {item.totalQuantity}</Typography>
+            <Chip size="small" label={formatProductionStatus(item.status)} sx={{ bgcolor: getProductionStatusColor(item.status), color: 'white' }} />
+          </Stack>
+        </Stack>
+      ))}
+      <MoreRows count={items.length - 5} />
+    </>
+  );
+}
+
+function InvoiceRows({ invoices }: { invoices: Invoice[] }) {
+  if (invoices.length === 0) {
+    return <EmptyQueue message="No invoices are awaiting payment." />;
+  }
+
+  return (
+    <>
+      {invoices.slice(0, 5).map((invoice) => (
+        <Stack key={invoice.id} direction="row" justifyContent="space-between" spacing={2} sx={{ py: 0.8, borderBottom: '1px solid #EEE' }}>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="body2" sx={{ fontWeight: 700 }}>{invoice.invoiceNumber}</Typography>
+            <Typography variant="caption" color="text.secondary">
+              {customerName(invoice)} · due {compactDateFormatter.format(invoice.dueDate)}
+            </Typography>
+          </Box>
+          <Typography variant="body2" sx={{ fontWeight: 700 }}>{formatMoney(invoice.outstandingAmount)}</Typography>
+        </Stack>
+      ))}
+      <MoreRows count={invoices.length - 5} />
+    </>
+  );
+}
+
+function ProblemRows({ problems }: { problems: AdminDashboardProblemItem[] }) {
+  if (problems.length === 0) {
+    return <EmptyQueue message="No failed emails, stale work, or overdue blockers." />;
+  }
+
+  return (
+    <>
+      {problems.slice(0, 5).map((problem) => (
+        <Stack key={problem.id} direction="row" justifyContent="space-between" spacing={2} sx={{ py: 0.8, borderBottom: '1px solid #EEE' }}>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="body2" sx={{ fontWeight: 700 }}>{problem.title}</Typography>
+            <Typography variant="caption" color="text.secondary">{problem.description}</Typography>
+          </Box>
+          <Chip size="small" label={problem.severity} color={problem.severity === 'Critical' ? 'error' : 'warning'} />
+        </Stack>
+      ))}
+      <MoreRows count={problems.length - 5} />
+    </>
   );
 }
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const { data: dashboard, isLoading, error } = useAdminDashboardQuery();
-  const currentWeekRange = formatCurrentWeekRange();
+  const batchToProduction = useBatchToProductionMutation(() => navigate('/admin/production'));
+  const batchShipAndInvoice = useBatchShipAndInvoiceMutation();
 
   if (isLoading) {
     return <LoadingState />;
   }
 
   if (error) {
-    return <ErrorState message={error instanceof Error ? error.message : 'Unable to load dashboard'} />;
+    return <ErrorState message={error instanceof Error ? error.message : 'Unable to load action center'} />;
   }
 
   if (!dashboard) {
-    return <EmptyState title="No dashboard data available" />;
+    return <EmptyState title="No action center data available" />;
   }
+
+  const needProductionOrders = dashboard.needProductionOrders;
+  const productionItems = dashboard.productionItems;
+  const readyToShipOrders = dashboard.readyToShipOrders;
+  const awaitingPaymentInvoices = dashboard.awaitingPaymentInvoices;
+  const problemItems = dashboard.problemItems;
+  const outstanding = awaitingPaymentInvoices.reduce((sum, invoice) => sum + invoice.outstandingAmount, 0);
+  const productionQuantity = productionItems.reduce((sum, item) => sum + Math.max(0, item.totalQuantity - item.producedQuantity), 0);
 
   return (
     <Box sx={{ mx: -1, p: { xs: 2, md: 4 }, borderRadius: 4, bgcolor: palette.linen, color: palette.espresso }}>
-      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} spacing={2} sx={{ mb: 4 }}>
+      <Stack direction={{ xs: 'column', md: 'row' }} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }} spacing={2} sx={{ mb: 3 }}>
         <Box>
           <Typography variant="h3" sx={{ fontFamily: 'Georgia, serif', color: palette.espresso }}>
-            Welcome back
+            Action Center
           </Typography>
-          <Typography variant="body1" color="text.secondary">Here’s an overview of your business operations.</Typography>
+          <Typography variant="body1" color="text.secondary">
+            Today’s work: {needProductionOrders.length} orders need production / {productionItems.length} product lines in production / {readyToShipOrders.length} orders ready to ship / {formatMoney(outstanding)} outstanding
+          </Typography>
         </Box>
-        <Button variant="outlined" startIcon={<CalendarMonth />} sx={{ color: palette.espresso, borderColor: '#D8C9B8', bgcolor: '#fff' }}>
-          {currentWeekRange}
-        </Button>
+        <Chip
+          label={`Business week: ${formatBusinessWeek(dashboard.businessWeek.from, dashboard.businessWeek.to)}`}
+          sx={{ bgcolor: '#fff', border: '1px solid #D8C9B8', px: 1.5, py: 2.5, fontWeight: 600 }}
+        />
       </Stack>
 
-      <Grid container spacing={3}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <MetricCard title="Orders Generated" value={dashboard.metrics.ordersThisWeek} subtitle="This week" icon={<TrendingUp />} accent="#16877D" onClick={() => navigate('/admin/orders')} />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <MetricCard title="In Production" value={dashboard.metrics.inProductionOrders} subtitle="Orders" icon={<ShoppingCart />} accent="#E2760C" onClick={() => navigate('/admin/orders')} />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <MetricCard title="Shipped" value={dashboard.metrics.shippedThisWeek} subtitle="This week" icon={<LocalShipping />} accent={palette.olive} onClick={() => navigate('/admin/orders')} />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <MetricCard title="Amount Due" value={`$${dashboard.metrics.totalOutstanding.toFixed(0)}`} subtitle={`${dashboard.metrics.unpaidInvoiceCount} invoices`} icon={<WarningAmber />} accent={palette.terracotta} onClick={() => navigate('/admin/invoices')} />
-        </Grid>
-
-        <Grid size={{ xs: 12, md: 8 }}>
-          <Card sx={{ borderRadius: 3, border: '1px solid #E6D8C8', boxShadow: '0 12px 30px rgba(75,46,32,0.08)' }}>
-            <CardContent>
-              <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-                <Stack direction="row" spacing={1.5} alignItems="center">
-                  <AssignmentTurnedIn sx={{ color: palette.espresso }} />
-                  <Typography variant="h5" sx={{ fontFamily: 'Georgia, serif' }}>Recent Orders</Typography>
-                </Stack>
-                <Button size="small" onClick={() => navigate('/admin/orders')} sx={{ color: palette.terracotta }}>View all orders</Button>
-              </Stack>
-              <Stack divider={<Box sx={{ borderBottom: '1px solid #EADFD2' }} />}>
-                {dashboard.recentOrders.slice(0, 6).map((order) => (
-                  <Stack key={order.id} direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" sx={{ py: 1.4, cursor: 'pointer' }} onClick={() => navigate('/admin/orders')}>
-                    <Typography variant="body2" sx={{ width: { md: 210 }, fontWeight: 600 }}>{order.orderNumber}</Typography>
-                    <Typography variant="body2" sx={{ flex: 1 }}>{order.customer?.businessName}</Typography>
-                    <Typography variant="body2">{order.generatedAt.toLocaleDateString()}</Typography>
-                    <Typography variant="body2" sx={{ width: 90, textAlign: { md: 'right' } }}>${order.totalAmount.toFixed(2)}</Typography>
-                    <Chip label={formatOrderStatus(order.orderStatus)} size="small" sx={{ bgcolor: getOrderStatusColor(order.orderStatus), color: 'white', minWidth: 98 }} />
-                  </Stack>
-                ))}
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid size={{ xs: 12, md: 4 }}>
-          <Stack spacing={3}>
-            <Card sx={{ borderRadius: 3, border: '1px solid #F0D2C8', bgcolor: '#FFFDFC' }}>
-              <CardContent>
-                <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
-                  <Stack direction="row" spacing={1.5} alignItems="center">
-                    <ReceiptLong sx={{ color: palette.terracotta }} />
-                    <Typography variant="h5" sx={{ fontFamily: 'Georgia, serif' }}>Overdue Invoices</Typography>
-                  </Stack>
-                  <Button size="small" onClick={() => navigate('/admin/invoices')} sx={{ color: palette.terracotta }}>View all</Button>
-                </Stack>
-                {dashboard.overdueInvoices.length === 0 ? (
-                  <Box sx={{ p: 3, borderRadius: 2, bgcolor: palette.cream, color: palette.espresso }}>
-                    <Typography>No overdue invoices</Typography>
-                    <Typography variant="body2" color="text.secondary">You’re all caught up.</Typography>
-                  </Box>
-                ) : (
-                  <Stack spacing={1}>
-                    {dashboard.overdueInvoices.slice(0, 4).map((invoice) => (
-                      <Box key={invoice.id} sx={{ p: 1.5, borderRadius: 2, bgcolor: '#FFF4EF', cursor: 'pointer' }} onClick={() => navigate('/admin/invoices')}>
-                        <Typography variant="body2" sx={{ fontWeight: 600 }}>{invoice.customer?.businessName}</Typography>
-                        <Typography variant="caption" color="text.secondary">{invoice.invoiceNumber} · ${invoice.outstandingAmount.toFixed(2)}</Typography>
-                      </Box>
-                    ))}
-                  </Stack>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card sx={{ borderRadius: 3, border: '1px solid #D9E7CE', background: `linear-gradient(135deg, #fff 0%, ${palette.sage}80 100%)` }}>
-              <CardContent>
-                <Stack direction="row" spacing={1.5} alignItems="center" sx={{ mb: 1 }}>
-                  <Groups sx={{ color: palette.olive }} />
-                  <Typography variant="h5" sx={{ fontFamily: 'Georgia, serif' }}>Active Customers</Typography>
-                </Stack>
-                <Typography variant="h2" sx={{ color: palette.olive, fontFamily: 'Georgia, serif' }}>{dashboard.metrics.activeCustomerCount}</Typography>
-                <Typography variant="body2" color="text.secondary">Total customers: {dashboard.metrics.totalCustomerCount}</Typography>
-              </CardContent>
-            </Card>
+      <Card sx={{ mb: 3, borderRadius: 3, border: '1px solid #E6D8C8', bgcolor: '#fff' }}>
+        <CardContent>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }} justifyContent="space-between">
+            <Stack spacing={0.5}>
+              <Typography variant="h6">Daily workflow</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Work left to right: send orders to production, finish product lines, ship ready orders, then collect payment.
+              </Typography>
+            </Stack>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+              <Button
+                variant="outlined"
+                startIcon={<PlayArrow />}
+                disabled={needProductionOrders.length === 0 || batchToProduction.isPending}
+                onClick={() => batchToProduction.mutate(needProductionOrders.map((order) => order.id))}
+              >
+                Send all to production
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<LocalShipping />}
+                disabled={readyToShipOrders.length === 0 || batchShipAndInvoice.isPending}
+                onClick={() => batchShipAndInvoice.mutate(readyToShipOrders.map((order) => order.id))}
+              >
+                Ship all ready + send invoices
+              </Button>
+            </Stack>
           </Stack>
+        </CardContent>
+      </Card>
+
+      <Grid container spacing={3}>
+        <Grid size={{ xs: 12, md: 6, xl: 4 }}>
+          <QueueCard
+            title="Need Production"
+            subtitle="Generated orders waiting to be batched"
+            icon={<AssignmentTurnedIn />}
+            accent={palette.teal}
+            count={needProductionOrders.length}
+            metric={`${needProductionOrders.length} order${needProductionOrders.length === 1 ? '' : 's'}`}
+            oldest={waitLabel(needProductionOrders.map((order) => order.generatedAt))}
+            actionLabel="Send all visible to production"
+            actionDisabled={needProductionOrders.length === 0 || batchToProduction.isPending}
+            onAction={() => batchToProduction.mutate(needProductionOrders.map((order) => order.id))}
+          >
+            <OrderRows orders={needProductionOrders} mode="production" />
+          </QueueCard>
+        </Grid>
+
+        <Grid size={{ xs: 12, md: 6, xl: 4 }}>
+          <QueueCard
+            title="Production In Progress"
+            subtitle="Product lines not completed yet"
+            icon={<Factory />}
+            accent={palette.amber}
+            count={productionItems.length}
+            metric={`${productionQuantity} unit${productionQuantity === 1 ? '' : 's'} left`}
+            oldest="Open queue"
+            actionLabel="Open production list"
+            onAction={() => navigate('/admin/production')}
+          >
+            <ProductionRows items={productionItems} />
+          </QueueCard>
+        </Grid>
+
+        <Grid size={{ xs: 12, md: 6, xl: 4 }}>
+          <QueueCard
+            title="Ready to Ship"
+            subtitle="Orders ready for delivery and invoice email"
+            icon={<LocalShipping />}
+            accent={palette.blue}
+            count={readyToShipOrders.length}
+            metric={formatMoney(readyToShipOrders.reduce((sum, order) => sum + order.totalAmount, 0))}
+            oldest={waitLabel(readyToShipOrders.map((order) => order.updatedAt))}
+            actionLabel="Ship all ready + send invoices"
+            actionDisabled={readyToShipOrders.length === 0 || batchShipAndInvoice.isPending}
+            onAction={() => batchShipAndInvoice.mutate(readyToShipOrders.map((order) => order.id))}
+          >
+            <OrderRows orders={readyToShipOrders} mode="ship" />
+          </QueueCard>
+        </Grid>
+
+        <Grid size={{ xs: 12, md: 6 }}>
+          <QueueCard
+            title="Awaiting Payment"
+            subtitle="Open invoices that need follow-up"
+            icon={<Payment />}
+            accent={palette.olive}
+            count={awaitingPaymentInvoices.length}
+            metric={formatMoney(outstanding)}
+            oldest={waitLabel(awaitingPaymentInvoices.map((invoice) => invoice.dueDate))}
+            actionLabel="Open payments"
+            onAction={() => navigate('/admin/payments')}
+          >
+            <InvoiceRows invoices={awaitingPaymentInvoices} />
+          </QueueCard>
+        </Grid>
+
+        <Grid size={{ xs: 12, md: 6 }}>
+          <QueueCard
+            title="Problems"
+            subtitle="Failures and stale work requiring review"
+            icon={<ReportProblem />}
+            accent={palette.terracotta}
+            count={problemItems.length}
+            metric={`${problemItems.filter((problem) => problem.severity === 'Critical').length} critical`}
+            oldest={waitLabel(problemItems.map((problem) => problem.createdAt))}
+            actionLabel="Review problems"
+            onAction={() => navigate(problemItems[0]?.targetPath ?? '/admin/logs')}
+          >
+            <ProblemRows problems={problemItems} />
+          </QueueCard>
         </Grid>
       </Grid>
+
+      <Divider sx={{ my: 3 }} />
+      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2}>
+        <Button startIcon={<Inventory2 />} onClick={() => navigate('/admin/orders')}>Open Orders</Button>
+        <Button startIcon={<Factory />} onClick={() => navigate('/admin/production')}>Open Production</Button>
+        <Button startIcon={<Payment />} onClick={() => navigate('/admin/payments')}>Open Payments</Button>
+      </Stack>
     </Box>
   );
 }
