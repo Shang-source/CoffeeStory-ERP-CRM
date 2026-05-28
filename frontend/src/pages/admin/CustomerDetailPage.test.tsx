@@ -88,8 +88,10 @@ describe('CustomerDetailPage', () => {
     const priceBookSection = priceBookHeading.closest('.MuiCardContent-root');
     expect(priceBookSection).not.toBeNull();
 
+    await waitFor(() => {
+      expect(container.querySelector('input[type="number"]')).not.toBeNull();
+    });
     const overrideInput = container.querySelector('input[type="number"]');
-    expect(overrideInput).not.toBeNull();
     fireEvent.change(overrideInput!, { target: { value: '34.5' } });
     fireEvent.change(within(priceBookSection as HTMLElement).getByPlaceholderText('Optional notes'), {
       target: { value: 'Wholesale override' },

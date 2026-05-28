@@ -17,7 +17,7 @@ export function useCustomerStandingOrderQuery() {
       try {
         return await getCustomerStandingOrder();
       } catch (error) {
-        if (error instanceof ApiError && error.status === 404 && error.code === 'STANDING_ORDER_NOT_FOUND') {
+        if (error instanceof ApiError && error.status === 404) {
           return null;
         }
 

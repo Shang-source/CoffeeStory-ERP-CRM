@@ -41,7 +41,8 @@ export function useSaveCustomerStandingOrderMutation(onSaved: (standingOrder: St
   return useMutation({
     mutationFn: (standingOrder: StandingOrder) => updateCustomerStandingOrder(standingOrder),
     onSuccess: (updated) => {
-      queryClient.setQueryData<StandingOrder>(queryKeys.customerStandingOrder, updated);
+      queryClient.setQueryData<StandingOrder | null>(queryKeys.customerStandingOrder, updated);
+      queryClient.invalidateQueries({ queryKey: queryKeys.customerDashboard });
       onSaved(updated);
       toast.success('Standing order updated successfully');
     },

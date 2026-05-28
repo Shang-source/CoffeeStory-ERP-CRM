@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeCustomerProduct, makeStandingOrder } from '@/entities/testing/fixtures';
+import { ApiError } from '@/shared/api/apiError';
 import StandingOrderPage from './StandingOrderPage';
 
 const getCustomerStandingOrderMock = vi.fn();
@@ -82,6 +83,17 @@ describe('Customer StandingOrderPage', () => {
     expect(await screen.findByText('No standing order exists yet. Add your coffee items, choose a frequency, then create your standing order.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Create Standing Order' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add Item' })).toBeInTheDocument();
+    expect(screen.queryByText('Standing order not found.')).not.toBeInTheDocument();
+  }, 20_000);
+
+  it('treats a missing customer standing order API response as create mode', async () => {
+    getCustomerStandingOrderMock.mockRejectedValue(new ApiError('Standing order not found.', 404, 'NOT_FOUND'));
+    getCustomerProductsMock.mockResolvedValue([makeCustomerProduct()]);
+
+    renderWithQuery();
+
+    expect(await screen.findByText('No standing order exists yet. Add your coffee items, choose a frequency, then create your standing order.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create Standing Order' })).toBeInTheDocument();
     expect(screen.queryByText('Standing order not found.')).not.toBeInTheDocument();
   }, 20_000);
 });

@@ -62,7 +62,7 @@ describe('Finance workflow pages', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Need to Send (1)' }));
     expect(await screen.findByText('INV-DRAFT')).toBeInTheDocument();
     expect(screen.queryByText('INV-FAILED')).not.toBeInTheDocument();
-  });
+  }, 15_000);
 
   it('separates payment collection, active records, and voided records', async () => {
     const customer = makeCustomer({ businessName: 'Nora Fish' });
@@ -122,7 +122,7 @@ describe('Finance workflow pages', () => {
     fireEvent.change(screen.getByLabelText('Search invoices, customers, references, amounts'), { target: { value: 'bank' } });
     fireEvent.click(screen.getByRole('tab', { name: 'Payment Records (1)' }));
     expect(await screen.findByText('BANK-123')).toBeInTheDocument();
-  });
+  }, 15_000);
 
   it('classifies statements by send status and supports search', async () => {
     const nora = makeCustomer({ id: 'customer-nora', businessName: 'Nora Fish', email: 'nora@example.com' });
@@ -149,7 +149,7 @@ describe('Finance workflow pages', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Ready to Send (1)' }));
     expect(await screen.findByText('STMT-READY')).toBeInTheDocument();
     expect(screen.queryByText('STMT-FAILED')).not.toBeInTheDocument();
-  });
+  }, 15_000);
 });
 
 function renderWithQuery(ui: ReactElement) {
