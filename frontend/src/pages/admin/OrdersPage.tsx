@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
-import { Alert, Box, Button, Card, CardContent, Checkbox, Chip, Collapse, FormControlLabel, IconButton, Menu, MenuItem, Stack, Switch, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs, TextField, Toolbar, Typography } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, Checkbox, Chip, Collapse, FormControlLabel, IconButton, Menu, MenuItem, Stack, Switch, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TableSortLabel, Tabs, TextField, Toolbar, Typography } from '@mui/material';
 import { KeyboardArrowDown, KeyboardArrowUp, MoreVert, PlayArrow, LocalShipping } from '@mui/icons-material';
 import { formatInvoiceStatus, getInvoiceStatusColor } from '@/shared/status/statusFormat';
 import { toast } from 'sonner';
 import { Order, OrderQueryParams } from '@/entities/types';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import ConfirmDialog from '@/shared/ui/ConfirmDialog/ConfirmDialog';
 import { useAdminOrdersQuery } from '@/entities/order/api/orderQueries';
 import { useBatchToProductionMutation } from '@/features/batchToProduction/model/batchToProductionMutations';
@@ -14,6 +14,8 @@ import { LoadingState } from '@/shared/ui/LoadingState';
 import { ErrorState } from '@/shared/ui/ErrorState';
 
 type OrderTab = 'all' | 'needProduction' | 'inProduction' | 'readyToShip' | 'awaitingPayment' | 'completed';
+type OrderSortField = 'orderNumber' | 'customer' | 'generatedAt' | 'totalAmount';
+type SortDirection = 'asc' | 'desc';
 
 const isAwaitingPayment = (order: Order) => ['Unpaid', 'PartiallyPaid', 'Overdue'].includes(order.invoiceStatus);
 const isCompleted = (order: Order) => order.orderStatus === 'Completed' || order.invoiceStatus === 'Paid';
@@ -48,6 +50,10 @@ const workflowStage = (order: Order): { label: string; color: string } => {
   }
   return { label: 'Need Production', color: '#9E9E9E' };
 };
+
+function formatDate(value: Date) {
+  return new Intl.DateTimeFormat('en-NZ', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(value);
+}
 
 interface OrderRowProps {
   order: Order;
@@ -111,7 +117,7 @@ function OrderRow({ order, selected, onSelect, onOrderAction }: OrderRowProps) {
             {order.customer?.businessName}
           </Button>
         </TableCell>
-        <TableCell>{order.generatedAt.toLocaleDateString()}</TableCell>
+        <TableCell>{formatDate(order.generatedAt)}</TableCell>
         <TableCell align="right">${order.totalAmount.toFixed(2)}</TableCell>
         <TableCell><Chip label={workflowStage(order).label} size="small" sx={{ bgcolor: workflowStage(order).color, color: 'white' }} /></TableCell>
         <TableCell><Chip label={formatInvoiceStatus(order.invoiceStatus)} size="small" sx={{ bgcolor: getInvoiceStatusColor(order.invoiceStatus), color: 'white' }} /></TableCell>
@@ -175,8 +181,13 @@ function OrderRow({ order, selected, onSelect, onOrderAction }: OrderRowProps) {
 
 export default function Orders() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<OrderTab>('needProduction');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [tab, setTab] = useState<OrderTab>(() => normalizeOrderTab(searchParams.get('tab')) ?? 'needProduction');
   const [filters, setFilters] = useState<OrderQueryParams>({});
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [sortField, setSortField] = useState<OrderSortField>('generatedAt');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [showCancelled, setShowCancelled] = useState(false);
   const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
   const { data: orders = [], isLoading, error } = useAdminOrdersQuery(filters);
@@ -188,8 +199,11 @@ export default function Orders() {
   const activeOrders = useMemo(() => orders.filter((order) => order.orderStatus !== 'Cancelled'), [orders]);
   const visibleOrders = useMemo(() => {
     const sourceOrders = tab === 'all' && showCancelled ? orders : activeOrders;
-    return sourceOrders.filter(currentTab.predicate);
-  }, [activeOrders, orders, currentTab, showCancelled, tab]);
+    return sourceOrders
+      .filter(currentTab.predicate)
+      .filter((order) => isWithinDateRange(order.generatedAt, fromDate, toDate))
+      .sort((left, right) => compareOrders(left, right, sortField, sortDirection));
+  }, [activeOrders, orders, currentTab, showCancelled, tab, fromDate, toDate, sortField, sortDirection]);
   const selectedOrders = orders.filter((order) => selectedOrderIds.has(order.id));
   const selectedGeneratedOrders = selectedOrders.filter((order) => order.orderStatus === 'Generated');
   const selectedReadyToShipOrders = selectedOrders.filter((order) => order.orderStatus === 'ReadyToShip');
@@ -219,6 +233,16 @@ export default function Orders() {
       visibleOrders.forEach((order) => checked ? next.add(order.id) : next.delete(order.id));
       return next;
     });
+  };
+
+  const handleSort = (field: OrderSortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+      return;
+    }
+
+    setSortField(field);
+    setSortDirection(field === 'totalAmount' || field === 'generatedAt' ? 'desc' : 'asc');
   };
 
   const handleOrderAction = async (action: () => Promise<Order>, successMessage: string) => {
@@ -278,6 +302,8 @@ export default function Orders() {
         <CardContent>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} alignItems={{ md: 'center' }}>
             <TextField label="Search orders, customers, products, SKU" size="small" fullWidth value={filters.search ?? ''} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value || undefined }))} />
+            <TextField label="From" type="date" size="small" value={fromDate} onChange={(event) => setFromDate(event.target.value)} InputLabelProps={{ shrink: true }} />
+            <TextField label="To" type="date" size="small" value={toDate} onChange={(event) => setToDate(event.target.value)} InputLabelProps={{ shrink: true }} />
             <FormControlLabel
               sx={{ minWidth: 170 }}
               control={<Switch checked={showCancelled} onChange={(event) => setShowCancelled(event.target.checked)} />}
@@ -291,7 +317,16 @@ export default function Orders() {
       </Card>
 
       <Card>
-        <Tabs value={tab} onChange={(_, value) => setTab(value)} variant="scrollable" scrollButtons="auto" sx={{ borderBottom: 1, borderColor: 'divider' }}>
+        <Tabs
+          value={tab}
+          onChange={(_, value: OrderTab) => {
+            setTab(value);
+            setSearchParams(value === 'needProduction' ? {} : { tab: value });
+          }}
+          variant="scrollable"
+          scrollButtons="auto"
+          sx={{ borderBottom: 1, borderColor: 'divider' }}
+        >
           {orderTabs.map((item) => (
             <Tab key={item.value} value={item.value} label={`${item.label} (${tabCounts[item.value] ?? 0})`} />
           ))}
@@ -314,10 +349,10 @@ export default function Orders() {
                       <Checkbox checked={allVisibleSelected} indeterminate={someVisibleSelected} onChange={(event) => handleSelectVisible(event.target.checked)} />
                     </TableCell>
                     <TableCell />
-                    <TableCell>Order #</TableCell>
-                    <TableCell>Customer</TableCell>
-                    <TableCell>Generated Date</TableCell>
-                    <TableCell align="right">Total</TableCell>
+                    <TableCell><TableSortLabel active={sortField === 'orderNumber'} direction={sortDirection} onClick={() => handleSort('orderNumber')}>Order #</TableSortLabel></TableCell>
+                    <TableCell><TableSortLabel active={sortField === 'customer'} direction={sortDirection} onClick={() => handleSort('customer')}>Customer</TableSortLabel></TableCell>
+                    <TableCell><TableSortLabel active={sortField === 'generatedAt'} direction={sortDirection} onClick={() => handleSort('generatedAt')}>Generated Date</TableSortLabel></TableCell>
+                    <TableCell align="right"><TableSortLabel active={sortField === 'totalAmount'} direction={sortDirection} onClick={() => handleSort('totalAmount')}>Total</TableSortLabel></TableCell>
                     <TableCell>Workflow</TableCell>
                     <TableCell>Payment</TableCell>
                     <TableCell>Actions</TableCell>
@@ -335,4 +370,53 @@ export default function Orders() {
       </Card>
     </Box>
   );
+}
+
+function isWithinDateRange(date: Date, fromDate: string, toDate: string) {
+  const time = date.getTime();
+  if (fromDate && time < new Date(fromDate).getTime()) {
+    return false;
+  }
+
+  if (toDate) {
+    const end = new Date(toDate);
+    end.setHours(23, 59, 59, 999);
+    if (time > end.getTime()) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function compareOrders(left: Order, right: Order, field: OrderSortField, direction: SortDirection) {
+  const multiplier = direction === 'asc' ? 1 : -1;
+  const leftValue = orderSortValue(left, field);
+  const rightValue = orderSortValue(right, field);
+  if (leftValue < rightValue) return -1 * multiplier;
+  if (leftValue > rightValue) return 1 * multiplier;
+  return 0;
+}
+
+function orderSortValue(order: Order, field: OrderSortField): string | number {
+  switch (field) {
+    case 'customer':
+      return order.customer?.businessName.toLowerCase() ?? '';
+    case 'generatedAt':
+      return order.generatedAt.getTime();
+    case 'totalAmount':
+      return order.totalAmount;
+    case 'orderNumber':
+    default:
+      return order.orderNumber.toLowerCase();
+  }
+}
+
+function normalizeOrderTab(value: string | null): OrderTab | null {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase()) as OrderTab;
+  return orderTabs.some((tab) => tab.value === normalized) ? normalized : null;
 }

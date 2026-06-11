@@ -66,6 +66,7 @@ public sealed class StandingOrderServiceTests
         var customer = new Customer
         {
             Id = Guid.NewGuid(),
+            AccountNumber = "901",
             BusinessName = "New Online Customer",
             ContactPerson = "Nora Fish",
             Email = "nora@example.com",
@@ -110,6 +111,7 @@ public sealed class StandingOrderServiceTests
         var customer = new Customer
         {
             Id = Guid.NewGuid(),
+            AccountNumber = "902",
             BusinessName = "Takapuna Coffee",
             ContactPerson = "Alex Green",
             Email = "alex@takapunacoffee.co.nz",
@@ -125,7 +127,7 @@ public sealed class StandingOrderServiceTests
         var created = await service.CreateAdminStandingOrder(new CreateAdminStandingOrderRequest(
             customer.Id,
             OrderFrequency.Fortnightly,
-            DateTimeOffset.UtcNow.Date.AddDays(3),
+            NextFridayOnOrAfter(DateTimeOffset.UtcNow.Date.AddDays(3)),
             StandingOrderStatus.Active,
             "Front counter",
             "Call before delivery",
@@ -133,7 +135,7 @@ public sealed class StandingOrderServiceTests
 
         var updated = await service.UpdateAdminStandingOrder(created.Id, new UpdateAdminStandingOrderRequest(
             OrderFrequency.Monthly,
-            created.NextClosingDate.AddDays(10),
+            NextFridayOnOrAfter(created.NextClosingDate.AddDays(10)),
             StandingOrderStatus.Paused,
             "Rear entrance",
             "No delivery on public holidays",
@@ -152,6 +154,42 @@ public sealed class StandingOrderServiceTests
         var auditLogs = await db.AuditLogs.AsNoTracking().Where(log => log.EntityId == created.Id).ToListAsync();
         Assert.Contains(auditLogs, log => log.Action == "CreatedStandingOrder" && log.NewValues!.Contains("Fortnightly"));
         Assert.Contains(auditLogs, log => log.Action == "UpdatedAdminStandingOrder" && log.OldValues!.Contains("Fortnightly") && log.NewValues!.Contains("Monthly"));
+    }
+
+    [Fact]
+    public async Task CreateAdminStandingOrder_RejectsNonFridayClosingDate()
+    {
+        var services = await CreateServices();
+        var service = services.GetRequiredService<IStandingOrderService>();
+        var db = services.GetRequiredService<AppDbContext>();
+        var product = await db.Products.FirstAsync();
+        var customer = new Customer
+        {
+            Id = Guid.NewGuid(),
+            AccountNumber = "903",
+            BusinessName = "Friday Rule Cafe",
+            ContactPerson = "Test User",
+            Email = "friday-rule@example.com",
+            Phone = "0200000000",
+            BillingAddress = "1 Test Street",
+            DeliveryAddress = "1 Test Street",
+            PaymentTerms = "Net 14",
+            AccountStatus = AccountStatus.Active
+        };
+        db.Customers.Add(customer);
+        await db.SaveChangesAsync();
+        var nonFriday = NextFridayOnOrAfter(DateTimeOffset.UtcNow).AddDays(1);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAdminStandingOrder(new CreateAdminStandingOrderRequest(
+            customer.Id,
+            OrderFrequency.Weekly,
+            nonFriday,
+            StandingOrderStatus.Active,
+            null,
+            null,
+            [new UpdateStandingOrderItemRequest(product.Id, 1, null)]), CancellationToken.None));
+
+        Assert.Equal("Standing order closing date must be a Friday.", error.Message);
     }
 
     [Fact]
@@ -188,6 +226,7 @@ public sealed class StandingOrderServiceTests
 
         var persistedStandingOrder = await db.StandingOrders.AsNoTracking().SingleAsync(x => x.Id == standingOrder.Id);
         Assert.Equal(originalNextClosingDate.AddDays(7), persistedStandingOrder.NextClosingDate);
+        Assert.Equal(DayOfWeek.Friday, persistedStandingOrder.NextClosingDate.DayOfWeek);
 
         var persistedOrder = await db.Orders.Include(x => x.Items).SingleAsync(x => x.Id == result.Id);
         Assert.Equal(originalItemCount, persistedOrder.Items.Count);
@@ -300,5 +339,11 @@ public sealed class StandingOrderServiceTests
         var provider = services.BuildServiceProvider();
         await SeedData.Initialize(provider);
         return provider;
+    }
+
+    private static DateTimeOffset NextFridayOnOrAfter(DateTimeOffset value)
+    {
+        var daysUntilFriday = ((int)DayOfWeek.Friday - (int)value.DayOfWeek + 7) % 7;
+        return value.AddDays(daysUntilFriday);
     }
 }

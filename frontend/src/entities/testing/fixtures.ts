@@ -19,6 +19,7 @@ export const customerProfile: UserProfile = {
 export function makeCustomer(overrides: Partial<Customer> = {}): Customer {
   return {
     id: 'customer-1',
+    accountNumber: '301',
     businessName: 'Auckland Cafe',
     contactPerson: 'John Smith',
     email: 'john@aucklandcafe.co.nz',
@@ -41,7 +42,6 @@ export function makeProduct(overrides: Partial<Product> = {}): Product {
     description: 'House blend coffee',
     unit: 'kg',
     price: 38,
-    cost: 18,
     isActive: true,
     ...overrides,
   };

@@ -38,6 +38,8 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddOptions<QuartzOptions>()
             .Bind(configuration.GetSection("Quartz"))
             .Validate(options => options.StandingOrderIntervalMinutes > 0, "Quartz:StandingOrderIntervalMinutes must be greater than zero.")
+            .Validate(options => options.BillingAutomationIntervalHours > 0, "Quartz:BillingAutomationIntervalHours must be greater than zero.")
+            .Validate(options => options.StatementReminderIntervalDays > 0, "Quartz:StatementReminderIntervalDays must be greater than zero.")
             .ValidateOnStart();
         services.AddOptions<SeedDataOptions>()
             .Bind(configuration.GetSection("SeedData"))
@@ -193,6 +195,7 @@ public static class InfrastructureServiceCollectionExtensions
         services.AddScoped<IStandingOrderJob, StandingOrderJob>();
         services.AddScoped<IDocumentRenderingService, DocumentRenderingService>();
         services.AddHostedService<OutboxRetryWorker>();
+        services.AddHostedService<BillingAutomationHostedService>();
 
         return services;
     }

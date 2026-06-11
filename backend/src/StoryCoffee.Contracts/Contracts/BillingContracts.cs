@@ -33,7 +33,7 @@ public sealed record PaymentRecordDto(
     decimal Amount,
     DateTimeOffset PaymentDate,
     string PaymentMethod,
-    string Reference,
+    string? Reference,
     Guid MarkedByUserId,
     string? Note,
     bool IsVoided,
@@ -45,8 +45,21 @@ public sealed record RecordPaymentRequest(
     decimal Amount,
     DateTimeOffset PaymentDate,
     string PaymentMethod,
-    string Reference,
+    string? Reference,
     string? Note);
+
+public sealed record BatchRecordPaymentsRequest(
+    IReadOnlyList<Guid> InvoiceIds,
+    DateTimeOffset PaymentDate,
+    string PaymentMethod,
+    string? Reference,
+    string? Note);
+
+public sealed record BatchRecordPaymentsResponse(
+    int UpdatedCount,
+    IReadOnlyList<InvoiceDto> Invoices,
+    IReadOnlyList<PaymentRecordDto> Payments,
+    IReadOnlyList<string> Failures);
 
 public sealed record VoidPaymentRequest(string Reason);
 
@@ -77,11 +90,13 @@ public sealed record CompanyDocumentProfile(
     string Website,
     string GstNumber,
     string BankName,
+    string BankAccountName,
     string BankAccountNumber);
 
 public sealed record InvoicePdfDocument(
     CompanyDocumentProfile Company,
     string InvoiceNumber,
+    string AccountNumber,
     string CustomerName,
     string CustomerEmail,
     string BillingAddress,
@@ -103,13 +118,15 @@ public sealed record InvoicePdfItem(
 public sealed record StatementPdfDocument(
     CompanyDocumentProfile Company,
     string StatementNumber,
+    string AccountNumber,
     string CustomerName,
     string BillingAddress,
     DateTimeOffset StatementDate,
     DateTimeOffset? PeriodStart,
     DateTimeOffset? PeriodEnd,
     decimal TotalOutstanding,
-    IReadOnlyList<StatementInvoicePdfLine> Invoices);
+    IReadOnlyList<StatementInvoicePdfLine> Invoices,
+    IReadOnlyList<StatementLedgerPdfLine> LedgerLines);
 
 public sealed record StatementInvoicePdfLine(
     string InvoiceNumber,
@@ -118,3 +135,11 @@ public sealed record StatementInvoicePdfLine(
     decimal TotalAmount,
     decimal OutstandingAmount,
     InvoiceStatus Status);
+
+public sealed record StatementLedgerPdfLine(
+    DateTimeOffset IssueDate,
+    DateTimeOffset? DueDate,
+    string Description,
+    decimal? Debit,
+    decimal? Credit,
+    decimal Balance);

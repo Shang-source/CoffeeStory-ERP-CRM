@@ -20,6 +20,7 @@ public static class SeedData
         var auckland = new Customer
         {
             Id = AucklandCustomerId,
+            AccountNumber = "301",
             BusinessName = "Auckland Cafe",
             ContactPerson = "John Smith",
             Email = "john@aucklandcafe.co.nz",
@@ -32,6 +33,7 @@ public static class SeedData
         var wellington = new Customer
         {
             Id = WellingtonCustomerId,
+            AccountNumber = "302",
             BusinessName = "Wellington Coffee House",
             ContactPerson = "Sarah Taylor",
             Email = "sarah@wellingtoncoffee.co.nz",
@@ -58,7 +60,7 @@ public static class SeedData
                     Description = "Classic house blend coffee beans",
                     Unit = "kg",
                     Price = 38.00m,
-                    Cost = 25.00m,
+                    Cost = 0,
                     IsActive = true
                 },
                 new Product
@@ -69,7 +71,7 @@ public static class SeedData
                     Description = "Decaffeinated coffee beans",
                     Unit = "g",
                     Price = 22.00m,
-                    Cost = 16.00m,
+                    Cost = 0,
                     IsActive = true
                 },
                 new Product
@@ -80,7 +82,7 @@ public static class SeedData
                     Description = "Brazilian espresso beans",
                     Unit = "kg",
                     Price = 42.00m,
-                    Cost = 30.00m,
+                    Cost = 0,
                     IsActive = true
                 },
                 new Product
@@ -91,7 +93,7 @@ public static class SeedData
                     Description = "Light roast filter coffee",
                     Unit = "g",
                     Price = 13.50m,
-                    Cost = 10.00m,
+                    Cost = 0,
                     IsActive = true
                 },
                 new Product
@@ -102,7 +104,7 @@ public static class SeedData
                     Description = "Single origin Colombian coffee beans",
                     Unit = "kg",
                     Price = 46.00m,
-                    Cost = 32.00m,
+                    Cost = 0,
                     IsActive = true
                 });
             await db.SaveChangesAsync(cancellationToken);
@@ -171,12 +173,12 @@ public static class SeedData
         {
             var products = await db.Products.ToDictionaryAsync(product => product.Sku, cancellationToken);
             db.StandingOrders.AddRange(
-                CreateStandingOrder(auckland, OrderFrequency.Weekly, DateTimeOffset.UtcNow.AddDays(7), "Deliver every Monday morning", new[]
+                CreateStandingOrder(auckland, OrderFrequency.Weekly, NextFridayOnOrAfter(DateTimeOffset.UtcNow.AddDays(7)), "Deliver every Monday morning", new[]
                 {
                     (products["HB-1KG"], 5),
                     (products["DCF-500G"], 2)
                 }),
-                CreateStandingOrder(wellington, OrderFrequency.Fortnightly, DateTimeOffset.UtcNow.AddDays(10), "Call before delivery", new[]
+                CreateStandingOrder(wellington, OrderFrequency.Fortnightly, NextFridayOnOrAfter(DateTimeOffset.UtcNow.AddDays(14)), "Call before delivery", new[]
                 {
                     (products["BR-ESP-1KG"], 4),
                     (products["FLT-250G"], 8)
@@ -241,6 +243,12 @@ public static class SeedData
             "COL-1KG" => Guid.Parse("10000000-0000-0000-0000-000000000005"),
             _ => Guid.NewGuid()
         };
+    }
+
+    private static DateTimeOffset NextFridayOnOrAfter(DateTimeOffset value)
+    {
+        var daysUntilFriday = ((int)DayOfWeek.Friday - (int)value.DayOfWeek + 7) % 7;
+        return value.AddDays(daysUntilFriday);
     }
 
     private static StandingOrder CreateStandingOrder(

@@ -26,7 +26,7 @@ public sealed class StandingOrderUseCase(IStandingOrderRepository standingOrderR
             Id = Guid.NewGuid(),
             CustomerId = request.CustomerId,
             Frequency = request.Frequency,
-            NextClosingDate = NormalizeUtc(request.NextClosingDate),
+            NextClosingDate = NormalizeFridayClosingDate(request.NextClosingDate),
             Status = request.Status,
             DeliveryNotes = NormalizeOptional(request.DeliveryNotes),
             InternalNotes = NormalizeOptional(request.InternalNotes),
@@ -56,7 +56,7 @@ public sealed class StandingOrderUseCase(IStandingOrderRepository standingOrderR
         standingOrderRepository.RemoveStandingOrderItems(existingItems);
 
         standingOrder.Frequency = request.Frequency;
-        standingOrder.NextClosingDate = NormalizeUtc(request.NextClosingDate);
+        standingOrder.NextClosingDate = NormalizeFridayClosingDate(request.NextClosingDate);
         standingOrder.Status = request.Status;
         standingOrder.DeliveryNotes = NormalizeOptional(request.DeliveryNotes);
         standingOrder.InternalNotes = NormalizeOptional(request.InternalNotes);
@@ -287,7 +287,7 @@ public sealed class StandingOrderUseCase(IStandingOrderRepository standingOrderR
 
     private static DateTimeOffset NextClosingDate(OrderFrequency frequency, DateTimeOffset current)
     {
-        return frequency switch
+        var nextDate = frequency switch
         {
             OrderFrequency.Weekly => current.AddDays(7),
             OrderFrequency.Fortnightly => current.AddDays(14),
@@ -295,11 +295,12 @@ public sealed class StandingOrderUseCase(IStandingOrderRepository standingOrderR
             OrderFrequency.ManualOnly => current,
             _ => current
         };
+        return NextFridayOnOrAfter(nextDate);
     }
 
     private static DateTimeOffset InitialNextClosingDate(OrderFrequency frequency, DateTimeOffset now)
     {
-        return frequency switch
+        var nextDate = frequency switch
         {
             OrderFrequency.Weekly => now.AddDays(7),
             OrderFrequency.Fortnightly => now.AddDays(14),
@@ -307,6 +308,7 @@ public sealed class StandingOrderUseCase(IStandingOrderRepository standingOrderR
             OrderFrequency.ManualOnly => now,
             _ => now.AddDays(7)
         };
+        return NextFridayOnOrAfter(nextDate);
     }
 
     private static void Require(bool condition, string message)
@@ -369,5 +371,16 @@ public sealed class StandingOrderUseCase(IStandingOrderRepository standingOrderR
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     }
 
-    private static DateTimeOffset NormalizeUtc(DateTimeOffset value) => value.ToUniversalTime();
+    private static DateTimeOffset NormalizeFridayClosingDate(DateTimeOffset value)
+    {
+        Require(value.DayOfWeek == DayOfWeek.Friday, "Standing order closing date must be a Friday.");
+        return value.ToUniversalTime();
+    }
+
+    private static DateTimeOffset NextFridayOnOrAfter(DateTimeOffset value)
+    {
+        var normalized = value.ToUniversalTime();
+        var daysUntilFriday = ((int)DayOfWeek.Friday - (int)normalized.DayOfWeek + 7) % 7;
+        return normalized.AddDays(daysUntilFriday);
+    }
 }

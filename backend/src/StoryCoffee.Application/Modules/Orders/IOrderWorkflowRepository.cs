@@ -10,6 +10,7 @@ public interface IOrderWorkflowRepository
     Task<IReadOnlyList<Order>> GetOrdersByIds(IReadOnlyList<Guid> orderIds, CancellationToken cancellationToken);
     Task<ProductionBatch?> GetOpenProductionBatch(CancellationToken cancellationToken);
     Task<int> CountProductionBatchesWithPrefix(string prefix, CancellationToken cancellationToken);
+    Task<int> CountInvoicesForCustomer(Guid customerId, CancellationToken cancellationToken);
     void AddProductionBatch(ProductionBatch productionBatch);
     void AddProductionItem(ProductionItem productionItem);
     void AddInvoice(Invoice invoice);

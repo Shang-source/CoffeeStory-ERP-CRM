@@ -7,6 +7,7 @@ public interface ICustomerRepository
     Task<bool> CustomerEmailExists(Guid? excludingCustomerId, string email, CancellationToken cancellationToken);
     Task<bool> UserEmailExists(string email, CancellationToken cancellationToken);
     Task<bool> HasSentCustomerInvite(Guid customerId, CancellationToken cancellationToken);
+    Task<string> GetNextAccountNumber(CancellationToken cancellationToken);
     Task<CustomerArchiveBlockers> GetArchiveBlockers(Guid customerId, CancellationToken cancellationToken);
     void AddCustomer(Customer customer);
     void AddUser(User user);

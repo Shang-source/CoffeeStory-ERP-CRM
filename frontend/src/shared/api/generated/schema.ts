@@ -762,6 +762,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/admin/invoices/batch-record-payments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["BatchRecordPaymentsRequest"];
+                    "text/json": components["schemas"]["BatchRecordPaymentsRequest"];
+                    "application/*+json": components["schemas"]["BatchRecordPaymentsRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["BatchRecordPaymentsResponse"];
+                        "application/json": components["schemas"]["BatchRecordPaymentsResponse"];
+                        "text/json": components["schemas"]["BatchRecordPaymentsResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/admin/invoices/{id}/download-url": {
         parameters: {
             query?: never;
@@ -3018,6 +3061,21 @@ export interface components {
             statementEmailsSent?: number;
             emailFailures?: string[] | null;
         };
+        BatchRecordPaymentsRequest: {
+            invoiceIds?: string[] | null;
+            /** Format: date-time */
+            paymentDate?: string;
+            paymentMethod?: string | null;
+            reference?: string | null;
+            note?: string | null;
+        };
+        BatchRecordPaymentsResponse: {
+            /** Format: int32 */
+            updatedCount?: number;
+            invoices?: components["schemas"]["InvoiceDto"][] | null;
+            payments?: components["schemas"]["PaymentRecordDto"][] | null;
+            failures?: string[] | null;
+        };
         BatchToProductionRequest: {
             orderIds?: string[] | null;
         };
@@ -3060,8 +3118,6 @@ export interface components {
             unit?: string | null;
             /** Format: double */
             price?: number;
-            /** Format: double */
-            cost?: number;
             isActive?: boolean;
         };
         CustomerDashboardDto: {
@@ -3082,6 +3138,7 @@ export interface components {
         CustomerDto: {
             /** Format: uuid */
             id?: string;
+            accountNumber?: string | null;
             businessName?: string | null;
             contactPerson?: string | null;
             email?: string | null;
@@ -3328,8 +3385,6 @@ export interface components {
             unit?: string | null;
             /** Format: double */
             price?: number;
-            /** Format: double */
-            cost?: number;
             isActive?: boolean;
         };
         ProductionBatchDto: {
@@ -3491,8 +3546,6 @@ export interface components {
             unit?: string | null;
             /** Format: double */
             price?: number;
-            /** Format: double */
-            cost?: number;
             isActive?: boolean;
         };
         UpdateProductionItemRequest: {

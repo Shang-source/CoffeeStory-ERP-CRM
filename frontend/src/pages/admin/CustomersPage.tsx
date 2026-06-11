@@ -64,6 +64,7 @@ export default function Customers() {
               <TableHead>
                 <TableRow>
                   <TableCell>Business Name</TableCell>
+                  <TableCell>Account #</TableCell>
                   <TableCell>Contact Person</TableCell>
                   <TableCell>Email</TableCell>
                   <TableCell>Phone</TableCell>
@@ -77,6 +78,7 @@ export default function Customers() {
                 {customers.map((customer) => (
                   <TableRow key={customer.id}>
                     <TableCell>{customer.businessName}</TableCell>
+                    <TableCell>{customer.accountNumber}</TableCell>
                     <TableCell>{customer.contactPerson}</TableCell>
                     <TableCell>{customer.email}</TableCell>
                     <TableCell>{customer.phone}</TableCell>

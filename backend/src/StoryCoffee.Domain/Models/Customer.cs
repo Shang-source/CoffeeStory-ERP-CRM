@@ -3,6 +3,7 @@ namespace StoryCoffee.Domain;
 public sealed class Customer
 {
     public Guid Id { get; set; }
+    public string AccountNumber { get; set; } = "";
     public string BusinessName { get; set; } = "";
     public string ContactPerson { get; set; } = "";
     public string Email { get; set; } = "";

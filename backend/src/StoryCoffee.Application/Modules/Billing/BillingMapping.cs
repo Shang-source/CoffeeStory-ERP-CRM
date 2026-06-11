@@ -13,6 +13,7 @@ public static class BillingMapping
             invoice.CustomerId,
             invoice.Customer is null ? null : new CustomerDto(
                 invoice.Customer.Id,
+                invoice.Customer.AccountNumber,
                 invoice.Customer.BusinessName,
                 invoice.Customer.ContactPerson,
                 invoice.Customer.Email,

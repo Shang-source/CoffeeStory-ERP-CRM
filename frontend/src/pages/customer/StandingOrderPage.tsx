@@ -29,7 +29,7 @@ export default function StandingOrderPage() {
     }
 
     if (standingOrderQuery.isSuccess && standingOrderQuery.data === null) {
-      setStandingOrder(createEmptyStandingOrder(user?.customerId));
+      setStandingOrder(createEmptyStandingOrder(user?.customerId ?? undefined));
       setIsEditing(true);
     }
   }, [standingOrderQuery.data, standingOrderQuery.isSuccess, user?.customerId]);
@@ -345,8 +345,7 @@ export default function StandingOrderPage() {
 }
 
 function createEmptyStandingOrder(customerId?: string): StandingOrder {
-  const nextClosingDate = new Date();
-  nextClosingDate.setDate(nextClosingDate.getDate() + 7);
+  const nextClosingDate = nextFridayOnOrAfter(new Date());
 
   return {
     id: '',
@@ -356,4 +355,11 @@ function createEmptyStandingOrder(customerId?: string): StandingOrder {
     status: 'Active',
     items: [],
   };
+}
+
+function nextFridayOnOrAfter(value: Date) {
+  const date = new Date(value);
+  const daysUntilFriday = (5 - date.getUTCDay() + 7) % 7;
+  date.setUTCDate(date.getUTCDate() + daysUntilFriday);
+  return date;
 }

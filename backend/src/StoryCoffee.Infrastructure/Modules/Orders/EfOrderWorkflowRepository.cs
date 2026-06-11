@@ -15,6 +15,7 @@ public sealed class EfOrderWorkflowRepository(AppDbContext db, IClock clock) : I
             var search = query.Search.Trim().ToLowerInvariant();
             orders = orders.Where(order =>
                 order.OrderNumber.ToLower().Contains(search) ||
+                order.Customer.AccountNumber.ToLower().Contains(search) ||
                 order.Customer.BusinessName.ToLower().Contains(search) ||
                 order.Customer.ContactPerson.ToLower().Contains(search) ||
                 order.Items.Any(item =>
@@ -89,6 +90,11 @@ public sealed class EfOrderWorkflowRepository(AppDbContext db, IClock clock) : I
     public Task<int> CountProductionBatchesWithPrefix(string prefix, CancellationToken cancellationToken)
     {
         return db.ProductionBatches.CountAsync(batch => batch.BatchNumber.StartsWith(prefix), cancellationToken);
+    }
+
+    public Task<int> CountInvoicesForCustomer(Guid customerId, CancellationToken cancellationToken)
+    {
+        return db.Invoices.CountAsync(invoice => invoice.CustomerId == customerId, cancellationToken);
     }
 
     public void AddProductionBatch(ProductionBatch productionBatch)

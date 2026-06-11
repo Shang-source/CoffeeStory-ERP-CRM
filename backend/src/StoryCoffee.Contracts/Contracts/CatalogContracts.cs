@@ -9,7 +9,6 @@ public sealed record ProductDto(
     string Description,
     string Unit,
     decimal Price,
-    decimal Cost,
     bool IsActive);
 
 public sealed record CustomerProductDto(
@@ -53,7 +52,6 @@ public sealed record CreateProductRequest(
     string Description,
     string Unit,
     decimal Price,
-    decimal Cost,
     bool IsActive);
 
 public sealed record UpdateProductRequest(
@@ -62,7 +60,6 @@ public sealed record UpdateProductRequest(
     string Description,
     string Unit,
     decimal Price,
-    decimal Cost,
     bool IsActive);
 
 public sealed record CreateCustomerRequest(

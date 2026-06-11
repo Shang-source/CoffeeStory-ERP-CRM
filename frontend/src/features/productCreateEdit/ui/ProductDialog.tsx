@@ -17,7 +17,6 @@ const emptyProduct: ProductPayload = {
   description: '',
   unit: 'kg',
   price: 0,
-  cost: 0,
   isActive: true,
 };
 
@@ -32,7 +31,6 @@ export default function ProductDialog({ open, product, onClose, onSave }: Produc
       description: product.description,
       unit: product.unit,
       price: product.price,
-      cost: product.cost,
       isActive: product.isActive,
     } : emptyProduct);
   }, [product, open]);
@@ -108,16 +106,6 @@ export default function ProductDialog({ open, product, onClose, onSave }: Produc
               fullWidth
               value={formData.price}
               onChange={(event) => handleChange('price', Number(event.target.value))}
-              inputProps={{ min: 0, step: 0.01 }}
-            />
-          </Grid>
-          <Grid size={{ xs: 12, md: 4 }}>
-            <TextField
-              label="Cost"
-              type="number"
-              fullWidth
-              value={formData.cost}
-              onChange={(event) => handleChange('cost', Number(event.target.value))}
               inputProps={{ min: 0, step: 0.01 }}
             />
           </Grid>

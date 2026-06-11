@@ -87,6 +87,7 @@ export interface ProductionBatch {
 
 export interface Customer {
   id: string;
+  accountNumber: string;
   businessName: string;
   contactPerson: string;
   email: string;
@@ -106,7 +107,6 @@ export interface Product {
   description: string;
   unit: string;
   price: number;
-  cost: number;
   isActive: boolean;
 }
 
@@ -233,13 +233,20 @@ export interface PaymentRecord {
   amount: number;
   paymentDate: Date;
   paymentMethod: string;
-  reference: string;
+  reference?: string;
   markedByUserId: string;
   note?: string;
   isVoided: boolean;
   voidedAt?: Date;
   voidedByUserId?: string;
   voidReason?: string;
+}
+
+export interface BatchRecordPaymentsResponse {
+  updatedCount: number;
+  invoices: Invoice[];
+  payments: PaymentRecord[];
+  failures: string[];
 }
 
 export interface Statement {

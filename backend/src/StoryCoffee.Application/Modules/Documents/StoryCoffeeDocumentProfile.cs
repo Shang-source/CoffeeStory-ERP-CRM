@@ -12,5 +12,6 @@ public static class StoryCoffeeDocumentProfile
         "www.storycoffee.co.nz",
         "105-912-471",
         "ASB",
+        "reborn Edge Limited",
         "12-3077-0789998-00");
 }

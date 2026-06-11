@@ -13,6 +13,7 @@ public static class OrderMapping
             order.CustomerId,
             order.Customer is null ? null : new CustomerDto(
                 order.Customer.Id,
+                order.Customer.AccountNumber,
                 order.Customer.BusinessName,
                 order.Customer.ContactPerson,
                 order.Customer.Email,

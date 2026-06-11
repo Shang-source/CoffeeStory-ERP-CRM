@@ -78,7 +78,8 @@ public sealed class ApiIntegrationTests(TestingWebAppFactory factory) : IClassFi
         inviteResponse.EnsureSuccessStatusCode();
         var invited = await inviteResponse.Content.ReadFromJsonAsync<CustomerDto>();
         var duplicateInviteResponse = await adminClient.PostAsync($"/api/admin/customers/{created.Id}/send-invite", null);
-        var duplicateInviteError = await duplicateInviteResponse.Content.ReadFromJsonAsync<ApiError>();
+        duplicateInviteResponse.EnsureSuccessStatusCode();
+        var resentInvite = await duplicateInviteResponse.Content.ReadFromJsonAsync<CustomerDto>();
         var customerClient = factory.CreateClient();
         var login = await Login(customerClient, email, password);
         customerClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", login.AccessToken);
@@ -87,8 +88,8 @@ public sealed class ApiIntegrationTests(TestingWebAppFactory factory) : IClassFi
         Assert.Equal(HttpStatusCode.Unauthorized, loginBeforeInvite.StatusCode);
         Assert.Equal(AccountStatus.Draft, invited!.AccountStatus);
         Assert.True(invited.HasPortalUser);
-        Assert.Equal(HttpStatusCode.BadRequest, duplicateInviteResponse.StatusCode);
-        Assert.Equal("customer_already_invited", duplicateInviteError!.Code);
+        Assert.Equal(AccountStatus.Draft, resentInvite!.AccountStatus);
+        Assert.True(resentInvite.HasPortalUser);
         Assert.Equal(UserRole.Customer, login.Role);
         Assert.Equal(created.Id, login.UserProfile.CustomerId);
         Assert.Equal(email, login.UserProfile.Email);
@@ -705,7 +706,6 @@ public sealed class ApiIntegrationTests(TestingWebAppFactory factory) : IClassFi
             "Single origin PNG coffee beans",
             "kg",
             48,
-            34,
             true));
         createResponse.EnsureSuccessStatusCode();
         var created = await createResponse.Content.ReadFromJsonAsync<ProductDto>();
@@ -716,7 +716,6 @@ public sealed class ApiIntegrationTests(TestingWebAppFactory factory) : IClassFi
             "Updated single origin PNG coffee beans",
             "kg",
             49,
-            35,
             false));
         updateResponse.EnsureSuccessStatusCode();
         var updated = await updateResponse.Content.ReadFromJsonAsync<ProductDto>();
@@ -767,6 +766,7 @@ public sealed class ApiIntegrationTests(TestingWebAppFactory factory) : IClassFi
             var customer = new Customer
             {
                 Id = Guid.NewGuid(),
+                AccountNumber = "904",
                 BusinessName = "Password Test Cafe",
                 ContactPerson = "Casey Morgan",
                 Email = email,
@@ -879,7 +879,7 @@ public sealed class ApiIntegrationTests(TestingWebAppFactory factory) : IClassFi
         var createResponse = await client.PostAsJsonAsync("/api/admin/standing-orders", new CreateAdminStandingOrderRequest(
             customer!.Id,
             OrderFrequency.Weekly,
-            DateTimeOffset.UtcNow.Date.AddDays(2),
+            NextFridayOnOrAfter(DateTimeOffset.UtcNow),
             StandingOrderStatus.Active,
             "Morning delivery",
             "VIP account",
@@ -951,7 +951,7 @@ public sealed class ApiIntegrationTests(TestingWebAppFactory factory) : IClassFi
         var createStandingOrderResponse = await client.PostAsJsonAsync("/api/admin/standing-orders", new CreateAdminStandingOrderRequest(
             customer!.Id,
             OrderFrequency.Weekly,
-            DateTimeOffset.UtcNow.AddDays(-1),
+            PreviousFridayBefore(DateTimeOffset.UtcNow),
             StandingOrderStatus.Active,
             "Leave at reception",
             null,
@@ -1233,6 +1233,25 @@ public sealed class ApiIntegrationTests(TestingWebAppFactory factory) : IClassFi
         var response = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(email, password));
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<LoginResponse>())!;
+    }
+
+    private static DateTimeOffset NextFridayOnOrAfter(DateTimeOffset value)
+    {
+        var normalized = new DateTimeOffset(value.Date, TimeSpan.Zero);
+        var daysUntilFriday = ((int)DayOfWeek.Friday - (int)normalized.DayOfWeek + 7) % 7;
+        return normalized.AddDays(daysUntilFriday);
+    }
+
+    private static DateTimeOffset PreviousFridayBefore(DateTimeOffset value)
+    {
+        var normalized = new DateTimeOffset(value.Date, TimeSpan.Zero);
+        var daysSinceFriday = ((int)normalized.DayOfWeek - (int)DayOfWeek.Friday + 7) % 7;
+        if (daysSinceFriday == 0)
+        {
+            daysSinceFriday = 7;
+        }
+
+        return normalized.AddDays(-daysSinceFriday);
     }
 
     private sealed record PaymentResponse(InvoiceDto Invoice, PaymentRecordDto Payment);

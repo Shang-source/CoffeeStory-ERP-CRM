@@ -109,7 +109,7 @@ export default function CustomerInvoiceDetailPage() {
                         <TableRow key={payment.id}>
                           <TableCell>{payment.paymentDate.toLocaleDateString()}</TableCell>
                           <TableCell>{payment.paymentMethod}</TableCell>
-                          <TableCell>{payment.reference}</TableCell>
+                          <TableCell>{payment.reference || '—'}</TableCell>
                           <TableCell align="right"><MoneyText value={payment.amount} /></TableCell>
                         </TableRow>
                       ))}
@@ -142,7 +142,7 @@ export default function CustomerInvoiceDetailPage() {
               <Box sx={{ mt: 3, p: 2, bgcolor: invoice.outstandingAmount > 0 ? 'warning.light' : 'success.light', borderRadius: 1 }}>
                 <Typography variant="body2">
                   {invoice.outstandingAmount > 0
-                    ? 'Please use the invoice number as your payment reference.'
+                    ? `Please use your account number${invoice.customer?.accountNumber ? ` (${invoice.customer.accountNumber})` : ''} as your payment reference.`
                     : 'This invoice has no outstanding balance.'}
                 </Typography>
               </Box>

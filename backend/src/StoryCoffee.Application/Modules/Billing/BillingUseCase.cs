@@ -82,11 +82,12 @@ public sealed class BillingUseCase(
                 $"Outstanding: ${invoice.OutstandingAmount:F2}",
                 $"Status: {invoice.Status}",
                 "",
-                "Payment terms: Please pay by the due date using your invoice number as reference."
+                $"Payment terms: Please use account number {invoice.Customer.AccountNumber} as reference."
             ],
             Invoice: new InvoicePdfDocument(
                 StoryCoffeeDocumentProfile.Default,
                 invoice.InvoiceNumber,
+                invoice.Customer.AccountNumber,
                 invoice.Customer.BusinessName,
                 invoice.Customer.Email,
                 invoice.Customer.BillingAddress,
@@ -143,7 +144,7 @@ public sealed class BillingUseCase(
         invoice.Order.UpdatedAt = clock.UtcNow;
         var subject = $"StoryCoffee invoice {invoice.InvoiceNumber}";
         var emailLog = billingRepository.AddEmailLog("Invoice", invoice.Id, invoice.Customer.Email, subject, EmailStatus.Pending);
-        var renderedEmail = StoryCoffeeEmailTemplates.Invoice(invoice.InvoiceNumber, invoice.Customer.BusinessName, invoice.OutstandingAmount, invoice.DueDate);
+        var renderedEmail = StoryCoffeeEmailTemplates.Invoice(invoice.InvoiceNumber, invoice.Customer.AccountNumber, invoice.Customer.BusinessName, invoice.OutstandingAmount, invoice.DueDate);
         var message = new EmailMessage(
             invoice.Customer.Email,
             subject,
@@ -193,27 +194,56 @@ public sealed class BillingUseCase(
         Require(invoice.Status is InvoiceStatus.Unpaid or InvoiceStatus.PartiallyPaid or InvoiceStatus.Overdue, "Only unpaid invoices can receive payments.");
         Require(request.Amount > 0, "Payment amount must be greater than zero.");
         Require(request.Amount <= invoice.OutstandingAmount, "Payment amount cannot exceed the outstanding amount.");
-        Require(!string.IsNullOrWhiteSpace(request.Reference), "Payment reference is required.");
 
-        var payment = new PaymentRecord
-        {
-            Id = Guid.NewGuid(),
-            InvoiceId = invoice.Id,
-            Amount = request.Amount,
-            PaymentDate = request.PaymentDate,
-            PaymentMethod = string.IsNullOrWhiteSpace(request.PaymentMethod) ? "BankTransfer" : request.PaymentMethod,
-            Reference = request.Reference.Trim(),
-            MarkedByUserId = markedByUserId,
-            Note = NormalizeOptional(request.Note),
-            CreatedAt = clock.UtcNow
-        };
-
+        var payment = CreatePayment(invoice, markedByUserId, request.Amount, request.PaymentDate, request.PaymentMethod, request.Reference, request.Note);
         billingRepository.AddPayment(payment);
-        ApplyPaymentTotals(invoice, invoice.Payments);
+        ApplyPaymentTotals(invoice, invoice.Payments.Append(payment));
         await RecalculateEditableStatementSnapshots(invoice, cancellationToken);
-        billingRepository.AddAudit("RecordedPayment", "Invoice", invoice.Id, $"Recorded payment {payment.Reference} for invoice {invoice.InvoiceNumber}", markedByUserId, UserRole.Admin.ToString());
+        billingRepository.AddAudit("RecordedPayment", "Invoice", invoice.Id, $"Recorded payment {PaymentReferenceLabel(payment)} for invoice {invoice.InvoiceNumber}", markedByUserId, UserRole.Admin.ToString());
         await billingRepository.SaveChanges(cancellationToken);
         return (invoice.ToDto(), payment.ToDto());
+    }
+
+    public async Task<BatchRecordPaymentsResponse> BatchRecordPayments(Guid markedByUserId, BatchRecordPaymentsRequest request, CancellationToken cancellationToken)
+    {
+        Require(request.InvoiceIds.Count > 0, "At least one invoice is required.");
+
+        var invoices = new List<InvoiceDto>();
+        var payments = new List<PaymentRecordDto>();
+        var failures = new List<string>();
+        var processed = new HashSet<Guid>();
+
+        foreach (var invoiceId in request.InvoiceIds)
+        {
+            if (!processed.Add(invoiceId))
+            {
+                continue;
+            }
+
+            var invoice = await billingRepository.GetInvoice(invoiceId, cancellationToken);
+            if (invoice is null)
+            {
+                failures.Add($"{invoiceId}: invoice not found.");
+                continue;
+            }
+
+            if (invoice.Status is not (InvoiceStatus.Unpaid or InvoiceStatus.PartiallyPaid or InvoiceStatus.Overdue) || invoice.OutstandingAmount <= 0)
+            {
+                failures.Add($"{invoice.InvoiceNumber}: invoice is not payable.");
+                continue;
+            }
+
+            var payment = CreatePayment(invoice, markedByUserId, invoice.OutstandingAmount, request.PaymentDate, request.PaymentMethod, request.Reference, request.Note);
+            billingRepository.AddPayment(payment);
+            ApplyPaymentTotals(invoice, invoice.Payments.Append(payment));
+            await RecalculateEditableStatementSnapshots(invoice, cancellationToken);
+            billingRepository.AddAudit("BatchRecordedPayment", "Invoice", invoice.Id, $"Recorded batch payment {PaymentReferenceLabel(payment)} for invoice {invoice.InvoiceNumber}", markedByUserId, UserRole.Admin.ToString());
+            invoices.Add(invoice.ToDto());
+            payments.Add(payment.ToDto());
+        }
+
+        await billingRepository.SaveChanges(cancellationToken);
+        return new BatchRecordPaymentsResponse(invoices.Count, invoices, payments, failures);
     }
 
     public async Task<(InvoiceDto Invoice, PaymentRecordDto Payment)> VoidPayment(Guid invoiceId, Guid paymentId, Guid markedByUserId, VoidPaymentRequest request, CancellationToken cancellationToken)
@@ -233,7 +263,7 @@ public sealed class BillingUseCase(
         payment.VoidReason = request.Reason.Trim();
         ApplyPaymentTotals(invoice, invoice.Payments);
         await RecalculateEditableStatementSnapshots(invoice, cancellationToken);
-        billingRepository.AddAudit("VoidedPayment", "Invoice", invoice.Id, $"Voided payment {payment.Reference} for invoice {invoice.InvoiceNumber}", markedByUserId, UserRole.Admin.ToString());
+        billingRepository.AddAudit("VoidedPayment", "Invoice", invoice.Id, $"Voided payment {PaymentReferenceLabel(payment)} for invoice {invoice.InvoiceNumber}", markedByUserId, UserRole.Admin.ToString());
         await billingRepository.SaveChanges(cancellationToken);
         return (invoice.ToDto(), payment.ToDto());
     }
@@ -270,7 +300,10 @@ public sealed class BillingUseCase(
 
     private void ApplyPaymentTotals(Invoice invoice, IEnumerable<PaymentRecord> payments)
     {
-        var paidAmount = payments.Where(payment => !payment.IsVoided).Sum(payment => payment.Amount);
+        var paidAmount = payments
+            .DistinctBy(payment => payment.Id)
+            .Where(payment => !payment.IsVoided)
+            .Sum(payment => payment.Amount);
         invoice.PaidAmount = paidAmount;
         invoice.OutstandingAmount = Math.Max(0, invoice.TotalAmount - paidAmount);
         invoice.Status = invoice.OutstandingAmount <= 0
@@ -309,6 +342,27 @@ public sealed class BillingUseCase(
     private static string? NormalizeOptional(string? value)
     {
         return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private PaymentRecord CreatePayment(Invoice invoice, Guid markedByUserId, decimal amount, DateTimeOffset paymentDate, string paymentMethod, string? reference, string? note)
+    {
+        return new PaymentRecord
+        {
+            Id = Guid.NewGuid(),
+            InvoiceId = invoice.Id,
+            Amount = amount,
+            PaymentDate = paymentDate,
+            PaymentMethod = string.IsNullOrWhiteSpace(paymentMethod) ? "BankTransfer" : paymentMethod.Trim(),
+            Reference = NormalizeOptional(reference) ?? "",
+            MarkedByUserId = markedByUserId,
+            Note = NormalizeOptional(note),
+            CreatedAt = clock.UtcNow
+        };
+    }
+
+    private static string PaymentReferenceLabel(PaymentRecord payment)
+    {
+        return string.IsNullOrWhiteSpace(payment.Reference) ? "without reference" : payment.Reference;
     }
 
     private static void Require(bool condition, string message)

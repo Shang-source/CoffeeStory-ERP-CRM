@@ -9,6 +9,7 @@ public interface IStatementRepository
     Task<IReadOnlyList<Statement>> GetCustomerStatements(Guid customerId, CancellationToken cancellationToken);
     Task<IReadOnlyList<Invoice>> GetOpenInvoicesForStatements(CancellationToken cancellationToken);
     Task<IReadOnlyList<Invoice>> GetOpenInvoicesForCustomer(Guid customerId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<Invoice>> GetLedgerInvoicesForCustomer(Guid customerId, DateTimeOffset periodStart, DateTimeOffset periodEnd, CancellationToken cancellationToken);
     Task<Statement?> GetCustomerStatementInPeriod(Guid customerId, DateTimeOffset periodStart, DateTimeOffset periodEnd, CancellationToken cancellationToken);
     Task<Statement?> GetEditableCustomerStatement(Guid customerId, CancellationToken cancellationToken);
     void AddStatement(Statement statement);

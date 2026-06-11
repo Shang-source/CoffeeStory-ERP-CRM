@@ -61,9 +61,22 @@ public sealed class RecordPaymentRequestValidator : AbstractValidator<RecordPaym
         RuleFor(request => request.Amount)
             .GreaterThan(0)
             .WithMessage("Payment amount must be greater than zero.");
-        RuleFor(request => request.Reference)
+    }
+}
+
+public sealed class BatchRecordPaymentsRequestValidator : AbstractValidator<BatchRecordPaymentsRequest>
+{
+    public BatchRecordPaymentsRequestValidator()
+    {
+        RuleFor(request => request.InvoiceIds)
             .NotEmpty()
-            .WithMessage("Payment reference is required.");
+            .WithMessage("At least one invoice is required.");
+        RuleForEach(request => request.InvoiceIds)
+            .NotEmpty()
+            .WithMessage("Invoice id is required.");
+        RuleFor(request => request.PaymentDate)
+            .NotEmpty()
+            .WithMessage("Payment date is required.");
     }
 }
 

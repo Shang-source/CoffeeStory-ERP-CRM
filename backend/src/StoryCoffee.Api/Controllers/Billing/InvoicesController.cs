@@ -59,6 +59,13 @@ public sealed class InvoicesController(IBillingService billing, IPdfGenerator pd
         return new PaymentActionResponse(result.Invoice, result.Payment);
     }
 
+    [HttpPost("api/admin/invoices/batch-record-payments")]
+    public async Task<BatchRecordPaymentsResponse> BatchRecordPayments(BatchRecordPaymentsRequest request, CancellationToken cancellationToken)
+    {
+        RequireRole(UserRole.Admin);
+        return await billing.BatchRecordPayments(CurrentUserId(), request, cancellationToken);
+    }
+
     [HttpPost("api/admin/invoices/{invoiceId:guid}/payments/{paymentId:guid}/void")]
     public async Task<PaymentActionResponse> VoidPayment(Guid invoiceId, Guid paymentId, VoidPaymentRequest request, CancellationToken cancellationToken)
     {

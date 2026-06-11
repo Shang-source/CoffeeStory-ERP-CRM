@@ -76,7 +76,6 @@ export default function Products() {
                   <TableCell>Description</TableCell>
                   <TableCell>Unit</TableCell>
                   <TableCell align="right">Price</TableCell>
-                  <TableCell align="right">Cost</TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell align="center">Actions</TableCell>
                 </TableRow>
@@ -89,7 +88,6 @@ export default function Products() {
                     <TableCell>{product.description}</TableCell>
                     <TableCell>{product.unit}</TableCell>
                     <TableCell align="right">${product.price.toFixed(2)}</TableCell>
-                    <TableCell align="right">${product.cost.toFixed(2)}</TableCell>
                     <TableCell>
                       <Chip label={product.isActive ? 'Active' : 'Inactive'} color={product.isActive ? 'success' : 'default'} size="small" />
                     </TableCell>

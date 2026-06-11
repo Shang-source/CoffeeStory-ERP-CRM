@@ -80,6 +80,11 @@ namespace StoryCoffee.Infrastructure.Migrations
                         .HasMaxLength(30)
                         .HasColumnType("character varying(30)");
 
+                    b.Property<string>("AccountNumber")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
                     b.Property<string>("BillingAddress")
                         .IsRequired()
                         .HasColumnType("text");
@@ -115,6 +120,9 @@ namespace StoryCoffee.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("AccountNumber")
+                        .IsUnique();
 
                     b.ToTable("customers", (string)null);
                 });

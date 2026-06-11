@@ -53,15 +53,16 @@ public sealed class StatementUseCase(
             }
 
             var invoices = group.ToList();
+            var now = clock.UtcNow;
             var statement = new Statement
             {
                 Id = Guid.NewGuid(),
-                StatementNumber = $"STMT-{clock.UtcNow:yyyyMMdd}-{generated.Count + 1:000}",
+                StatementNumber = $"STMT-{now:yyyyMMdd}-{generated.Count + 1:000}",
                 CustomerId = group.Key,
                 Customer = invoices[0].Customer,
-                StatementDate = clock.UtcNow,
-                PeriodStart = invoices.Min(invoice => invoice.IssueDate),
-                PeriodEnd = clock.UtcNow,
+                StatementDate = now,
+                PeriodStart = now.AddMonths(-1),
+                PeriodEnd = now,
                 TotalOutstanding = invoices.Sum(invoice => invoice.OutstandingAmount),
                 Status = StatementStatus.ReadyToSend,
                 EmailStatus = EmailStatus.NotSent
@@ -113,6 +114,41 @@ public sealed class StatementUseCase(
         }
     }
 
+    public async Task<StatementAutomationRunResult> GenerateAndEmailDueStatements(CancellationToken cancellationToken)
+    {
+        var invoices = await statementRepository.GetOpenInvoicesForStatements(cancellationToken);
+        var processed = 0;
+        var sentCount = 0;
+        var failedCount = 0;
+        var errors = new List<string>();
+
+        foreach (var group in invoices.GroupBy(invoice => invoice.CustomerId))
+        {
+            processed++;
+            try
+            {
+                var statement = await UpsertEditableStatement(group.Key, group.ToList(), cancellationToken);
+                var sent = await SendStatementEmail(statement.Id, cancellationToken);
+                if (sent.EmailStatus == EmailStatus.Sent)
+                {
+                    sentCount++;
+                }
+                else
+                {
+                    failedCount++;
+                    errors.Add($"{sent.StatementNumber}: statement email failed.");
+                }
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or KeyNotFoundException or ApiException)
+            {
+                failedCount++;
+                errors.Add($"{group.Key}: {ex.Message}");
+            }
+        }
+
+        return new StatementAutomationRunResult(processed, sentCount, failedCount, errors);
+    }
+
     public async Task<PdfDocumentResult> GenerateStatementPdf(Guid statementId, Guid? customerId, CancellationToken cancellationToken)
     {
         var statement = await GetStatementOrThrow(statementId, customerId, cancellationToken);
@@ -129,7 +165,7 @@ public sealed class StatementUseCase(
         statementRepository.AddAudit("GeneratedStatementPdf", "Statement", statement.Id, $"Generated PDF for statement {statement.StatementNumber}");
         await statementRepository.SaveChanges(cancellationToken);
 
-        return BuildStatementPdf(statement);
+        return await BuildStatementPdf(statement, cancellationToken);
     }
 
     public async Task<StatementDto> SendStatementEmail(Guid statementId, CancellationToken cancellationToken)
@@ -151,13 +187,13 @@ public sealed class StatementUseCase(
         statement.UpdatedAt = clock.UtcNow;
         statement.PdfFileKey ??= $"statements/{statement.StatementNumber}.pdf";
         statement.PdfGeneratedAt = clock.UtcNow;
-        var pdf = BuildStatementPdf(statement);
+        var pdf = await BuildStatementPdf(statement, cancellationToken);
         var pdfContent = pdfGenerator.Generate(pdf);
         await documentStorage.Save(pdf.FileKey, pdfContent, "application/pdf", cancellationToken);
 
         var subject = $"StoryCoffee statement {statement.StatementNumber}";
         var emailLog = statementRepository.AddEmailLog("Statement", statement.Id, statement.Customer.Email, subject, EmailStatus.Pending);
-        var renderedEmail = StoryCoffeeEmailTemplates.Statement(statement.StatementNumber, statement.Customer.BusinessName, statement.TotalOutstanding, statement.StatementDate);
+        var renderedEmail = StoryCoffeeEmailTemplates.Statement(statement.StatementNumber, statement.Customer.AccountNumber, statement.Customer.BusinessName, statement.TotalOutstanding, statement.StatementDate);
         var message = new EmailMessage(
             statement.Customer.Email,
             subject,
@@ -219,7 +255,7 @@ public sealed class StatementUseCase(
         }
 
         statement.StatementDate = now;
-        statement.PeriodStart = invoices.Min(invoice => invoice.IssueDate);
+        statement.PeriodStart = now.AddMonths(-1);
         statement.PeriodEnd = now;
         statement.TotalOutstanding = invoices.Sum(invoice => invoice.OutstandingAmount);
         statement.Status = StatementStatus.ReadyToSend;
@@ -244,15 +280,26 @@ public sealed class StatementUseCase(
         return statement;
     }
 
-    private static PdfDocumentResult BuildStatementPdf(Statement statement)
+    private async Task<PdfDocumentResult> BuildStatementPdf(Statement statement, CancellationToken cancellationToken)
     {
+        var periodEnd = statement.PeriodEnd ?? statement.StatementDate;
+        var periodStart = statement.PeriodStart ?? periodEnd.AddMonths(-1);
+        if (periodStart < periodEnd.AddMonths(-1))
+        {
+            periodStart = periodEnd.AddMonths(-1);
+        }
+
+        var ledgerLines = await BuildLedgerLines(statement, periodStart, periodEnd, cancellationToken);
         var lines = new List<string>
         {
             $"Customer: {statement.Customer.BusinessName}",
-            $"Statement date: {statement.StatementDate:yyyy-MM-dd}",
-            $"Period: {statement.PeriodStart:yyyy-MM-dd} - {statement.PeriodEnd:yyyy-MM-dd}",
+            $"Account number: {statement.Customer.AccountNumber}",
+            $"Statement date: {statement.StatementDate:dd/MM/yyyy}",
+            $"Period: {periodStart:dd/MM/yyyy} - {periodEnd:dd/MM/yyyy}",
             $"Total outstanding: ${statement.TotalOutstanding:F2}",
-            $"Status: {statement.Status}"
+            $"Status: {statement.Status}",
+            $"Payment reference: {statement.Customer.AccountNumber}",
+            $"Account name: {StoryCoffeeDocumentProfile.Default.BankAccountName}"
         };
         lines.AddRange(statement.Invoices
             .OrderBy(invoice => invoice.DueDateSnapshot)
@@ -267,11 +314,12 @@ public sealed class StatementUseCase(
             Statement: new StatementPdfDocument(
                 StoryCoffeeDocumentProfile.Default,
                 statement.StatementNumber,
+                statement.Customer.AccountNumber,
                 statement.Customer.BusinessName,
                 statement.Customer.BillingAddress,
                 statement.StatementDate,
-                statement.PeriodStart,
-                statement.PeriodEnd,
+                periodStart,
+                periodEnd,
                 statement.TotalOutstanding,
                 statement.Invoices
                     .OrderBy(invoice => invoice.DueDateSnapshot)
@@ -282,8 +330,66 @@ public sealed class StatementUseCase(
                         invoice.TotalAmountSnapshot,
                         invoice.OutstandingAmountSnapshot,
                         invoice.StatusSnapshot))
-                    .ToList()));
+                    .ToList(),
+                ledgerLines));
     }
+
+    private async Task<IReadOnlyList<StatementLedgerPdfLine>> BuildLedgerLines(Statement statement, DateTimeOffset periodStart, DateTimeOffset periodEnd, CancellationToken cancellationToken)
+    {
+        var invoices = await statementRepository.GetLedgerInvoicesForCustomer(statement.CustomerId, periodStart, periodEnd, cancellationToken);
+        var events = new List<LedgerEvent>();
+        foreach (var invoice in invoices)
+        {
+            if (invoice.IssueDate >= periodStart && invoice.IssueDate <= periodEnd)
+            {
+                events.Add(new LedgerEvent(
+                    invoice.IssueDate,
+                    invoice.DueDate,
+                    invoice.InvoiceNumber,
+                    invoice.TotalAmount,
+                    null,
+                    0));
+            }
+
+            foreach (var payment in invoice.Payments.Where(payment => !payment.IsVoided && payment.PaymentDate >= periodStart && payment.PaymentDate <= periodEnd))
+            {
+                events.Add(new LedgerEvent(
+                    payment.PaymentDate,
+                    null,
+                    $"Payment received for {invoice.InvoiceNumber}",
+                    null,
+                    payment.Amount,
+                    1));
+            }
+        }
+
+        var periodDebits = events.Sum(item => item.Debit ?? 0);
+        var periodCredits = events.Sum(item => item.Credit ?? 0);
+        var currentOutstanding = invoices.Sum(invoice => invoice.OutstandingAmount);
+        var openingBalance = currentOutstanding - periodDebits + periodCredits;
+        var runningBalance = openingBalance;
+        var lines = new List<StatementLedgerPdfLine>();
+        if (openingBalance != 0)
+        {
+            lines.Add(new StatementLedgerPdfLine(periodStart, null, "Opening balance", null, null, openingBalance));
+        }
+
+        foreach (var item in events.OrderBy(item => item.Date).ThenBy(item => item.SortOrder).ThenBy(item => item.Description))
+        {
+            runningBalance += (item.Debit ?? 0) - (item.Credit ?? 0);
+            lines.Add(new StatementLedgerPdfLine(item.Date, item.DueDate, item.Description, item.Debit, item.Credit, runningBalance));
+        }
+
+        return lines;
+    }
+
+    private sealed record LedgerEvent(
+        DateTimeOffset Date,
+        DateTimeOffset? DueDate,
+        string Description,
+        decimal? Debit,
+        decimal? Credit,
+        int SortOrder);
 
     private async Task<Statement> GetStatementOrThrow(Guid statementId, Guid? customerId, CancellationToken cancellationToken)
     {

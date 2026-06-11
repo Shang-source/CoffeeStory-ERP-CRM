@@ -6,6 +6,7 @@ public static class CustomerMapping
     {
         return new CustomerDto(
             customer.Id,
+            customer.AccountNumber,
             customer.BusinessName,
             customer.ContactPerson,
             customer.Email,

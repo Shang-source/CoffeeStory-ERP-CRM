@@ -9,6 +9,7 @@ public static class StatementMapping
     {
         var customer = statement.Customer is null ? null : new CustomerDto(
             statement.Customer.Id,
+            statement.Customer.AccountNumber,
             statement.Customer.BusinessName,
             statement.Customer.ContactPerson,
             statement.Customer.Email,

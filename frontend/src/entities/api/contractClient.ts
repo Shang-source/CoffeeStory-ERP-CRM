@@ -1,4 +1,4 @@
-import { AccountStatus, AdminDashboard, AuditLog, BatchShipAndInvoiceResponse, Customer, CustomerDashboard, CustomerPriceBook, CustomerPriceBookItem, CustomerProduct, EmailLog, EmailStatus, Invoice, Order, OrderFrequency, OrderQueryParams, PagedResult, PaymentRecord, Product, ProductionBatch, ProductionItem, StandingOrder, StandingOrderStatus, Statement, UserRole } from '@/entities/types';
+import { AccountStatus, AdminDashboard, AuditLog, BatchRecordPaymentsResponse, BatchShipAndInvoiceResponse, Customer, CustomerDashboard, CustomerPriceBook, CustomerPriceBookItem, CustomerProduct, EmailLog, EmailStatus, Invoice, Order, OrderFrequency, OrderQueryParams, PagedResult, PaymentRecord, Product, ProductionBatch, ProductionItem, StandingOrder, StandingOrderStatus, Statement, UserRole } from '@/entities/types';
 import type { LoginResponse, UserProfile } from '@/entities/user/model/authTypes';
 import type { components } from '@/shared/api/generated/schema';
 import { apiDownloadBlob, apiRequest, apiRequestNoContent, downloadExternalBlob, request } from '@/shared/api/httpClient';
@@ -159,7 +159,7 @@ export async function exportEmailLogs(params: LogQueryParams = {}) {
   await apiDownloadBlob('/api/admin/logs/email/export', 'get', `/api/admin/logs/email/export${query}`, 'storycoffee-email-logs.csv');
 }
 
-export type ProductPayload = RequireKeys<ApiRequestBody<'/api/admin/products', 'post'>, 'sku' | 'name' | 'description' | 'unit' | 'price' | 'cost' | 'isActive'>;
+export type ProductPayload = RequireKeys<ApiRequestBody<'/api/admin/products', 'post'>, 'sku' | 'name' | 'description' | 'unit' | 'price' | 'isActive'>;
 export type CustomerPriceBookPayload = RequireKeys<ApiRequestBody<'/api/admin/customers/{id}/price-book', 'put'>, 'items'>;
 
 export type StandingOrderPayload = RequireKeys<Omit<ApiRequestBody<'/api/admin/standing-orders', 'post'>, 'frequency' | 'status' | 'items'>, 'nextClosingDate'> & {
@@ -338,13 +338,40 @@ export async function downloadCustomerInvoicePdf(invoiceId: string) {
   await downloadPdf(parsePdfDownload(metadata));
 }
 
-export type RecordPaymentInput = RequireKeys<ApiRequestBody<'/api/admin/invoices/{id}/payments', 'post'>, 'amount' | 'paymentDate' | 'paymentMethod' | 'reference'>;
+export interface RecordPaymentInput {
+  amount: number;
+  paymentDate: string;
+  paymentMethod: string;
+  reference?: string;
+  note?: string;
+}
+
+export interface BatchRecordPaymentsInput {
+  invoiceIds: string[];
+  paymentDate: string;
+  paymentMethod: string;
+  reference?: string;
+  note?: string;
+}
 
 export async function recordInvoicePayment(invoiceId: string, payment: RecordPaymentInput) {
   const response = await apiRequest('/api/admin/invoices/{id}/payments', 'post', `/api/admin/invoices/${invoiceId}/payments`, {
     body: JSON.stringify(payment),
   });
   return parseInvoice(required(response.invoice, 'payment.invoice'));
+}
+
+export async function batchRecordInvoicePayments(payment: BatchRecordPaymentsInput): Promise<BatchRecordPaymentsResponse> {
+  const response = await request<BatchRecordPaymentsResponse>('/api/admin/invoices/batch-record-payments', {
+    method: 'POST',
+    body: JSON.stringify(payment),
+  });
+  return {
+    updatedCount: required(response.updatedCount, 'batchRecordPayments.updatedCount'),
+    invoices: parseInvoices(response.invoices ?? []),
+    payments: (response.payments ?? []).map(parsePaymentRecord),
+    failures: response.failures ?? [],
+  };
 }
 
 export async function voidInvoicePayment(invoiceId: string, paymentId: string, reason: string) {
@@ -574,6 +601,7 @@ function parseOrderItem(item: ApiOrderItem | Order['items'][number]): Order['ite
 function parseCustomer(customer: ApiCustomer | Customer): Customer {
   return {
     id: required(customer.id, 'customer.id'),
+    accountNumber: required(customer.accountNumber, 'customer.accountNumber'),
     businessName: required(customer.businessName, 'customer.businessName'),
     contactPerson: required(customer.contactPerson, 'customer.contactPerson'),
     email: required(customer.email, 'customer.email'),
@@ -595,7 +623,6 @@ function parseProduct(product: ApiProduct | Product): Product {
     description: required(product.description, 'product.description'),
     unit: required(product.unit, 'product.unit'),
     price: required(product.price, 'product.price'),
-    cost: required(product.cost, 'product.cost'),
     isActive: required(product.isActive, 'product.isActive'),
   };
 }
@@ -610,7 +637,6 @@ function parseCustomerProduct(product: ApiCustomerProduct | CustomerProduct): Cu
     description: required(product.description, 'customerProduct.description'),
     unit: required(product.unit, 'customerProduct.unit'),
     price: effectivePrice,
-    cost: 0,
     isActive: true,
     basePrice,
     effectivePrice,
@@ -703,7 +729,7 @@ function parsePaymentRecord(payment: ApiPaymentRecord | PaymentRecord): PaymentR
     amount: required(payment.amount, 'payment.amount'),
     paymentDate: parseDate(payment.paymentDate, 'payment.paymentDate'),
     paymentMethod: required(payment.paymentMethod, 'payment.paymentMethod'),
-    reference: required(payment.reference, 'payment.reference'),
+    reference: payment.reference ?? undefined,
     markedByUserId: required(payment.markedByUserId, 'payment.markedByUserId'),
     note: payment.note ?? undefined,
     isVoided: required(payment.isVoided, 'payment.isVoided'),

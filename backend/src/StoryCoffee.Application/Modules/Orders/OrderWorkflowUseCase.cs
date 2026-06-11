@@ -113,18 +113,24 @@ public sealed class OrderWorkflowUseCase(
 
     public Task<OrderDto> GenerateInvoice(Guid orderId, CancellationToken cancellationToken)
     {
-        return Apply(orderId, order =>
+        return unitOfWork.ExecuteInTransaction(async token =>
         {
+            var order = await orders.GetOrder(orderId, token)
+                ?? throw new KeyNotFoundException("Order not found.");
+
             Require(order.OrderStatus == OrderStatus.Shipped, "Only shipped orders can have invoices generated.");
             if (order.InvoiceStatus == InvoiceStatus.NotIssued)
             {
-                CreateInvoice(order, InvoiceStatus.Draft);
+                await CreateInvoice(order, InvoiceStatus.Draft, token);
             }
             else
             {
                 Require(order.InvoiceStatus is InvoiceStatus.Draft or InvoiceStatus.Issued, "Invoice has already been sent or settled.");
             }
+
             orders.AddAudit("GeneratedInvoice", "Order", order.Id, $"Generated invoice for order {order.OrderNumber}");
+            order.UpdatedAt = clock.UtcNow;
+            return order.ToDto();
         }, cancellationToken);
     }
 
@@ -138,7 +144,7 @@ public sealed class OrderWorkflowUseCase(
             Require(order.InvoiceStatus is InvoiceStatus.Draft or InvoiceStatus.Issued, "Only draft or issued invoices can be sent.");
             if (order.Invoice is null)
             {
-                CreateInvoice(order, InvoiceStatus.Draft);
+                await CreateInvoice(order, InvoiceStatus.Draft, token);
             }
 
             order.UpdatedAt = clock.UtcNow;
@@ -205,7 +211,7 @@ public sealed class OrderWorkflowUseCase(
             Require(order.OrderStatus == OrderStatus.ReadyToShip, "Only ready-to-ship orders can be shipped and invoiced.");
             order.OrderStatus = OrderStatus.Shipped;
             order.ShipmentStatus = ShipmentStatus.Shipped;
-            var invoice = order.Invoice ?? CreateInvoice(order, InvoiceStatus.Draft);
+            var invoice = order.Invoice ?? await CreateInvoice(order, InvoiceStatus.Draft, token);
             if (order.InvoiceStatus == InvoiceStatus.NotIssued)
             {
                 order.InvoiceStatus = InvoiceStatus.Draft;
@@ -239,14 +245,16 @@ public sealed class OrderWorkflowUseCase(
         return new ShipAndInvoiceResult(updatedOrder.ToDto(), invoiceEmailSent, statementEmailSent, failures);
     }
 
-    private Invoice CreateInvoice(Order order, InvoiceStatus status)
+    private async Task<Invoice> CreateInvoice(Order order, InvoiceStatus status, CancellationToken cancellationToken)
     {
         var now = clock.UtcNow;
         order.InvoiceStatus = status;
+        var accountNumber = string.IsNullOrWhiteSpace(order.Customer.AccountNumber) ? "000" : order.Customer.AccountNumber;
+        var nextSequence = await orders.CountInvoicesForCustomer(order.CustomerId, cancellationToken) + 1;
         var invoice = new Invoice
         {
             Id = Guid.NewGuid(),
-            InvoiceNumber = $"INV-{now:yyyyMMdd}-{order.OrderNumber[^4..]}",
+            InvoiceNumber = $"INV-{accountNumber}-{nextSequence:0000}",
             CustomerId = order.CustomerId,
             OrderId = order.Id,
             IssueDate = now,

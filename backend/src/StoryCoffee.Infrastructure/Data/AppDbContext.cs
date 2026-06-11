@@ -32,6 +32,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
         {
             entity.ToTable("customers");
             entity.HasKey(x => x.Id);
+            entity.HasIndex(x => x.AccountNumber).IsUnique();
+            entity.Property(x => x.AccountNumber).HasMaxLength(20).IsRequired();
             entity.Property(x => x.BusinessName).HasMaxLength(255).IsRequired();
             entity.Property(x => x.ContactPerson).HasMaxLength(255).IsRequired();
             entity.Property(x => x.Email).HasMaxLength(255).IsRequired();

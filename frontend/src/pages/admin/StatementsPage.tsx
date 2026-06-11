@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Alert, Box, Button, Card, CardContent, Grid, IconButton, Stack, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs, TextField, Typography, CircularProgress } from '@mui/material';
+import { Alert, Box, Button, Card, CardContent, Grid, IconButton, Stack, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TableSortLabel, Tabs, TextField, Typography, CircularProgress } from '@mui/material';
 import { Add, Visibility, Send, Download } from '@mui/icons-material';
 import { useAdminStatementsQuery } from '@/entities/statement/api/statementQueries';
 import { useDownloadStatementPdfMutation, useGenerateWeeklyStatementsMutation, useSendStatementEmailMutation } from '@/features/statementActions/model/statementActionsMutations';
@@ -9,6 +9,8 @@ import { StatusChip } from '@/shared/ui/StatusChip';
 import { Statement } from '@/entities/types';
 
 type StatementTab = 'readyToSend' | 'sent' | 'failed' | 'all';
+type StatementSortField = 'statementNumber' | 'customer' | 'statementDate' | 'period' | 'totalOutstanding';
+type SortDirection = 'asc' | 'desc';
 
 const statementTabs: Array<{ value: StatementTab; label: string; predicate: (statement: Statement) => boolean }> = [
   { value: 'readyToSend', label: 'Ready to Send', predicate: (statement) => ['Draft', 'ReadyToSend'].includes(statement.status) },
@@ -21,9 +23,13 @@ function money(value: number) {
   return `$${value.toFixed(2)}`;
 }
 
+function formatDate(value: Date) {
+  return new Intl.DateTimeFormat('en-NZ', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(value);
+}
+
 function statementPeriod(statement: Statement) {
   return statement.periodStart && statement.periodEnd
-    ? `${statement.periodStart.toLocaleDateString()} - ${statement.periodEnd.toLocaleDateString()}`
+    ? `${formatDate(statement.periodStart)} - ${formatDate(statement.periodEnd)}`
     : 'N/A';
 }
 
@@ -35,6 +41,7 @@ function statementMatchesSearch(statement: Statement, query: string) {
 
   const searchableText = [
     statement.statementNumber,
+    statement.customer?.accountNumber,
     statement.customer?.businessName,
     statement.customer?.contactPerson,
     statement.customer?.email,
@@ -63,13 +70,21 @@ export default function Statements() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<StatementTab>('readyToSend');
   const [search, setSearch] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [sortField, setSortField] = useState<StatementSortField>('statementDate');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const { data: statements = [], isLoading, error } = useAdminStatementsQuery();
   const generateWeeklyMutation = useGenerateWeeklyStatementsMutation();
   const sendEmailMutation = useSendStatementEmailMutation();
   const downloadStatementMutation = useDownloadStatementPdfMutation('admin');
-  const searchedStatements = useMemo(() => statements.filter((statement) => statementMatchesSearch(statement, search)), [statements, search]);
+  const searchedStatements = useMemo(() => statements
+    .filter((statement) => statementMatchesSearch(statement, search))
+    .filter((statement) => isWithinDateRange(statement.statementDate, fromDate, toDate)), [statements, search, fromDate, toDate]);
   const currentTab = statementTabs.find((item) => item.value === tab) ?? statementTabs[0];
-  const visibleStatements = useMemo(() => searchedStatements.filter(currentTab.predicate), [searchedStatements, currentTab]);
+  const visibleStatements = useMemo(() => searchedStatements
+    .filter(currentTab.predicate)
+    .sort((left, right) => compareStatements(left, right, sortField, sortDirection)), [searchedStatements, currentTab, sortField, sortDirection]);
   const tabCounts = useMemo(() => Object.fromEntries(statementTabs.map((item) => [item.value, searchedStatements.filter(item.predicate).length])), [searchedStatements]);
   const readyToSendCount = statements.filter(statementTabs[0].predicate).length;
   const failedCount = statements.filter(statementTabs[2].predicate).length;
@@ -86,6 +101,16 @@ export default function Statements() {
 
   const handleViewDetails = (statementId: string) => {
     navigate(`/admin/statements/${statementId}`);
+  };
+
+  const handleSort = (field: StatementSortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+      return;
+    }
+
+    setSortField(field);
+    setSortDirection(['statementDate', 'period', 'totalOutstanding'].includes(field) ? 'desc' : 'asc');
   };
 
   if (isLoading) {
@@ -144,22 +169,24 @@ export default function Statements() {
         <CardContent>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>
             <TextField
-              label="Search statements, customers, periods, amounts"
+              label="Search statements, customers, account numbers, periods, amounts"
               size="small"
               fullWidth
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
+            <TextField label="From" type="date" size="small" value={fromDate} onChange={(event) => setFromDate(event.target.value)} InputLabelProps={{ shrink: true }} />
+            <TextField label="To" type="date" size="small" value={toDate} onChange={(event) => setToDate(event.target.value)} InputLabelProps={{ shrink: true }} />
           </Stack>
           <TableContainer>
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell>Statement Number</TableCell>
-                  <TableCell>Customer</TableCell>
-                  <TableCell>Statement Date</TableCell>
-                  <TableCell>Period</TableCell>
-                  <TableCell align="right">Total Amount Due</TableCell>
+                  <TableCell><TableSortLabel active={sortField === 'statementNumber'} direction={sortDirection} onClick={() => handleSort('statementNumber')}>Statement Number</TableSortLabel></TableCell>
+                  <TableCell><TableSortLabel active={sortField === 'customer'} direction={sortDirection} onClick={() => handleSort('customer')}>Customer</TableSortLabel></TableCell>
+                  <TableCell><TableSortLabel active={sortField === 'statementDate'} direction={sortDirection} onClick={() => handleSort('statementDate')}>Statement Date</TableSortLabel></TableCell>
+                  <TableCell><TableSortLabel active={sortField === 'period'} direction={sortDirection} onClick={() => handleSort('period')}>Period</TableSortLabel></TableCell>
+                  <TableCell align="right"><TableSortLabel active={sortField === 'totalOutstanding'} direction={sortDirection} onClick={() => handleSort('totalOutstanding')}>Total Amount Due</TableSortLabel></TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Email Status</TableCell>
                   <TableCell align="center">Actions</TableCell>
@@ -175,7 +202,7 @@ export default function Statements() {
                   >
                     <TableCell>{statement.statementNumber}</TableCell>
                     <TableCell>{statement.customer?.businessName}</TableCell>
-                    <TableCell>{statement.statementDate.toLocaleDateString()}</TableCell>
+                    <TableCell>{formatDate(statement.statementDate)}</TableCell>
                     <TableCell>{statementPeriod(statement)}</TableCell>
                     <TableCell align="right">${statement.totalOutstanding.toFixed(2)}</TableCell>
                     <TableCell>
@@ -232,4 +259,46 @@ export default function Statements() {
       </Card>
     </Box>
   );
+}
+
+function isWithinDateRange(date: Date, fromDate: string, toDate: string) {
+  const time = date.getTime();
+  if (fromDate && time < new Date(fromDate).getTime()) {
+    return false;
+  }
+
+  if (toDate) {
+    const end = new Date(toDate);
+    end.setHours(23, 59, 59, 999);
+    if (time > end.getTime()) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function compareStatements(left: Statement, right: Statement, field: StatementSortField, direction: SortDirection) {
+  const multiplier = direction === 'asc' ? 1 : -1;
+  const leftValue = statementSortValue(left, field);
+  const rightValue = statementSortValue(right, field);
+  if (leftValue < rightValue) return -1 * multiplier;
+  if (leftValue > rightValue) return 1 * multiplier;
+  return 0;
+}
+
+function statementSortValue(statement: Statement, field: StatementSortField): string | number {
+  switch (field) {
+    case 'customer':
+      return statement.customer?.businessName.toLowerCase() ?? '';
+    case 'statementDate':
+      return statement.statementDate.getTime();
+    case 'period':
+      return statement.periodStart?.getTime() ?? statement.statementDate.getTime();
+    case 'totalOutstanding':
+      return statement.totalOutstanding;
+    case 'statementNumber':
+    default:
+      return statement.statementNumber.toLowerCase();
+  }
 }

@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import '@testing-library/jest-dom/vitest';
 import type { ReactElement } from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeCustomer, makeInvoice, makeStatement } from '@/entities/testing/fixtures';
 import InvoicesPage from './InvoicesPage';
 import PaymentsPage from './PaymentsPage';
@@ -35,6 +35,10 @@ describe('Finance workflow pages', () => {
     getAdminStatementsMock.mockReset();
   });
 
+  afterEach(() => {
+    cleanup();
+  });
+
   it('classifies invoices by action status and supports search', async () => {
     const nora = makeCustomer({ id: 'customer-nora', businessName: 'Nora Fish', email: 'nora@example.com' });
     const cafe = makeCustomer({ id: 'customer-cafe', businessName: 'Auckland Cafe', email: 'accounts@cafe.test' });
@@ -58,7 +62,7 @@ describe('Finance workflow pages', () => {
     expect(await screen.findByText('INV-UNPAID')).toBeInTheDocument();
     expect(screen.queryByText('INV-DRAFT')).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Search invoices, customers, emails, amounts'), { target: { value: 'nora' } });
+    fireEvent.change(screen.getByLabelText('Search invoices, customers, account numbers, emails, amounts'), { target: { value: 'nora' } });
     fireEvent.click(screen.getByRole('tab', { name: 'Need to Send (1)' }));
     expect(await screen.findByText('INV-DRAFT')).toBeInTheDocument();
     expect(screen.queryByText('INV-FAILED')).not.toBeInTheDocument();
@@ -119,7 +123,7 @@ describe('Finance workflow pages', () => {
     expect(await screen.findByText('VOID-123')).toBeInTheDocument();
     expect(screen.queryByText('BANK-123')).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Search invoices, customers, references, amounts'), { target: { value: 'bank' } });
+    fireEvent.change(screen.getByLabelText('Search invoice, customer, account number, email, amount'), { target: { value: 'bank' } });
     fireEvent.click(screen.getByRole('tab', { name: 'Payment Records (1)' }));
     expect(await screen.findByText('BANK-123')).toBeInTheDocument();
   }, 15_000);
@@ -145,7 +149,7 @@ describe('Finance workflow pages', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Failed (1)' }));
     expect(await screen.findByText('STMT-FAILED')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Search statements, customers, periods, amounts'), { target: { value: 'nora' } });
+    fireEvent.change(screen.getByLabelText('Search statements, customers, account numbers, periods, amounts'), { target: { value: 'nora' } });
     fireEvent.click(screen.getByRole('tab', { name: 'Ready to Send (1)' }));
     expect(await screen.findByText('STMT-READY')).toBeInTheDocument();
     expect(screen.queryByText('STMT-FAILED')).not.toBeInTheDocument();

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Alert, Box, Card, CardContent, Chip, Collapse, Grid, IconButton, Stack, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tabs, TextField, Typography, CircularProgress } from '@mui/material';
+import { Alert, Box, Card, CardContent, Chip, Collapse, Grid, IconButton, Stack, Tab, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TableSortLabel, Tabs, TextField, Typography, CircularProgress } from '@mui/material';
 import { Send, Download, KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
 import { formatInvoiceStatus, getInvoiceStatusColor } from '@/shared/status/statusFormat';
 import { Invoice } from '@/entities/types';
@@ -7,6 +7,8 @@ import { useAdminInvoicesQuery } from '@/entities/invoice/api/invoiceQueries';
 import { useDownloadInvoicePdfMutation, useSendInvoiceEmailMutation } from '@/features/invoiceActions/model/invoiceActionsMutations';
 
 type InvoiceTab = 'needToSend' | 'awaitingPayment' | 'overdue' | 'paid' | 'failed' | 'all';
+type InvoiceSortField = 'invoiceNumber' | 'customer' | 'issueDate' | 'dueDate' | 'totalAmount' | 'amountDue';
+type SortDirection = 'asc' | 'desc';
 
 const invoiceTabs: Array<{ value: InvoiceTab; label: string; predicate: (invoice: Invoice) => boolean }> = [
   { value: 'needToSend', label: 'Need to Send', predicate: (invoice) => ['Draft', 'Issued'].includes(invoice.status) && invoice.emailStatus !== 'Sent' },
@@ -21,6 +23,10 @@ function money(value: number) {
   return `$${value.toFixed(2)}`;
 }
 
+function formatDate(value: Date) {
+  return new Intl.DateTimeFormat('en-NZ', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(value);
+}
+
 function invoiceMatchesSearch(invoice: Invoice, query: string) {
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) {
@@ -29,6 +35,7 @@ function invoiceMatchesSearch(invoice: Invoice, query: string) {
 
   const searchableText = [
     invoice.invoiceNumber,
+    invoice.customer?.accountNumber,
     invoice.customer?.businessName,
     invoice.customer?.contactPerson,
     invoice.customer?.email,
@@ -79,8 +86,8 @@ function InvoiceRow({
         </TableCell>
         <TableCell>{invoice.invoiceNumber}</TableCell>
         <TableCell>{invoice.customer?.businessName}</TableCell>
-        <TableCell>{invoice.issueDate.toLocaleDateString()}</TableCell>
-        <TableCell>{invoice.dueDate.toLocaleDateString()}</TableCell>
+        <TableCell>{formatDate(invoice.issueDate)}</TableCell>
+        <TableCell>{formatDate(invoice.dueDate)}</TableCell>
         <TableCell align="right">${invoice.totalAmount.toFixed(2)}</TableCell>
         <TableCell align="right">${invoice.outstandingAmount.toFixed(2)}</TableCell>
         <TableCell>
@@ -154,12 +161,20 @@ function InvoiceRow({
 export default function Invoices() {
   const [tab, setTab] = useState<InvoiceTab>('needToSend');
   const [search, setSearch] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [sortField, setSortField] = useState<InvoiceSortField>('issueDate');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const { data: invoices = [], isLoading, error } = useAdminInvoicesQuery();
   const sendEmailMutation = useSendInvoiceEmailMutation();
   const downloadInvoiceMutation = useDownloadInvoicePdfMutation('admin');
-  const searchedInvoices = useMemo(() => invoices.filter((invoice) => invoiceMatchesSearch(invoice, search)), [invoices, search]);
+  const searchedInvoices = useMemo(() => invoices
+    .filter((invoice) => invoiceMatchesSearch(invoice, search))
+    .filter((invoice) => isWithinDateRange(invoice.issueDate, fromDate, toDate)), [invoices, search, fromDate, toDate]);
   const currentTab = invoiceTabs.find((item) => item.value === tab) ?? invoiceTabs[0];
-  const visibleInvoices = useMemo(() => searchedInvoices.filter(currentTab.predicate), [searchedInvoices, currentTab]);
+  const visibleInvoices = useMemo(() => searchedInvoices
+    .filter(currentTab.predicate)
+    .sort((left, right) => compareInvoices(left, right, sortField, sortDirection)), [searchedInvoices, currentTab, sortField, sortDirection]);
   const tabCounts = useMemo(() => Object.fromEntries(invoiceTabs.map((item) => [item.value, searchedInvoices.filter(item.predicate).length])), [searchedInvoices]);
   const openAmount = invoices
     .filter((invoice) => ['Unpaid', 'PartiallyPaid', 'Overdue'].includes(invoice.status))
@@ -168,6 +183,16 @@ export default function Invoices() {
     .filter((invoice) => invoice.status === 'Overdue')
     .reduce((sum, invoice) => sum + invoice.outstandingAmount, 0);
   const failedEmailCount = invoices.filter((invoice) => ['Failed', 'Bounced'].includes(invoice.emailStatus ?? 'NotSent')).length;
+
+  const handleSort = (field: InvoiceSortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+      return;
+    }
+
+    setSortField(field);
+    setSortDirection(['issueDate', 'dueDate', 'totalAmount', 'amountDue'].includes(field) ? 'desc' : 'asc');
+  };
 
   if (isLoading) {
     return (
@@ -213,24 +238,26 @@ export default function Invoices() {
         <CardContent>
           <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>
             <TextField
-              label="Search invoices, customers, emails, amounts"
+              label="Search invoices, customers, account numbers, emails, amounts"
               size="small"
               fullWidth
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
+            <TextField label="From" type="date" size="small" value={fromDate} onChange={(event) => setFromDate(event.target.value)} InputLabelProps={{ shrink: true }} />
+            <TextField label="To" type="date" size="small" value={toDate} onChange={(event) => setToDate(event.target.value)} InputLabelProps={{ shrink: true }} />
           </Stack>
           <TableContainer>
             <Table>
               <TableHead>
                 <TableRow>
                   <TableCell />
-                  <TableCell>Invoice #</TableCell>
-                  <TableCell>Customer</TableCell>
-                  <TableCell>Issue Date</TableCell>
-                  <TableCell>Due Date</TableCell>
-                  <TableCell align="right">Total</TableCell>
-                  <TableCell align="right">Amount Due</TableCell>
+                  <TableCell><TableSortLabel active={sortField === 'invoiceNumber'} direction={sortDirection} onClick={() => handleSort('invoiceNumber')}>Invoice #</TableSortLabel></TableCell>
+                  <TableCell><TableSortLabel active={sortField === 'customer'} direction={sortDirection} onClick={() => handleSort('customer')}>Customer</TableSortLabel></TableCell>
+                  <TableCell><TableSortLabel active={sortField === 'issueDate'} direction={sortDirection} onClick={() => handleSort('issueDate')}>Issue Date</TableSortLabel></TableCell>
+                  <TableCell><TableSortLabel active={sortField === 'dueDate'} direction={sortDirection} onClick={() => handleSort('dueDate')}>Due Date</TableSortLabel></TableCell>
+                  <TableCell align="right"><TableSortLabel active={sortField === 'totalAmount'} direction={sortDirection} onClick={() => handleSort('totalAmount')}>Total</TableSortLabel></TableCell>
+                  <TableCell align="right"><TableSortLabel active={sortField === 'amountDue'} direction={sortDirection} onClick={() => handleSort('amountDue')}>Amount Due</TableSortLabel></TableCell>
                   <TableCell>Status</TableCell>
                   <TableCell>Actions</TableCell>
                 </TableRow>
@@ -261,4 +288,48 @@ export default function Invoices() {
       </Card>
     </Box>
   );
+}
+
+function isWithinDateRange(date: Date, fromDate: string, toDate: string) {
+  const time = date.getTime();
+  if (fromDate && time < new Date(fromDate).getTime()) {
+    return false;
+  }
+
+  if (toDate) {
+    const end = new Date(toDate);
+    end.setHours(23, 59, 59, 999);
+    if (time > end.getTime()) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function compareInvoices(left: Invoice, right: Invoice, field: InvoiceSortField, direction: SortDirection) {
+  const multiplier = direction === 'asc' ? 1 : -1;
+  const leftValue = invoiceSortValue(left, field);
+  const rightValue = invoiceSortValue(right, field);
+  if (leftValue < rightValue) return -1 * multiplier;
+  if (leftValue > rightValue) return 1 * multiplier;
+  return 0;
+}
+
+function invoiceSortValue(invoice: Invoice, field: InvoiceSortField): string | number {
+  switch (field) {
+    case 'customer':
+      return invoice.customer?.businessName.toLowerCase() ?? '';
+    case 'issueDate':
+      return invoice.issueDate.getTime();
+    case 'dueDate':
+      return invoice.dueDate.getTime();
+    case 'totalAmount':
+      return invoice.totalAmount;
+    case 'amountDue':
+      return invoice.outstandingAmount;
+    case 'invoiceNumber':
+    default:
+      return invoice.invoiceNumber.toLowerCase();
+  }
 }

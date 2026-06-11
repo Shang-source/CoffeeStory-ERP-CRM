@@ -10,6 +10,7 @@ describe('parseOrderResponse', () => {
       customerId: 'customer-1',
       customer: {
         id: 'customer-1',
+        accountNumber: '301',
         businessName: 'Auckland Cafe',
         contactPerson: 'John Smith',
         email: 'john@aucklandcafe.co.nz',
@@ -45,6 +46,7 @@ describe('parseStatementResponse', () => {
       customerId: 'customer-1',
       customer: {
         id: 'customer-1',
+        accountNumber: '301',
         businessName: 'Auckland Cafe',
         contactPerson: 'John Smith',
         email: 'john@aucklandcafe.co.nz',
@@ -93,6 +95,7 @@ describe('parseStandingOrderResponse', () => {
       customerId: 'customer-1',
       customer: {
         id: 'customer-1',
+        accountNumber: '301',
         businessName: 'Auckland Cafe',
         contactPerson: 'John Smith',
         email: 'john@aucklandcafe.co.nz',
@@ -124,6 +127,7 @@ describe('parseInvoiceResponse', () => {
       customerId: 'customer-1',
       customer: {
         id: 'customer-1',
+        accountNumber: '301',
         businessName: 'Auckland Cafe',
         contactPerson: 'John Smith',
         email: 'john@aucklandcafe.co.nz',
@@ -162,7 +166,6 @@ describe('customer pricing parsers', () => {
       description: 'House blend',
       unit: 'kg',
       price: 35,
-      cost: 0,
       isActive: true,
       basePrice: 38,
       effectivePrice: 35,

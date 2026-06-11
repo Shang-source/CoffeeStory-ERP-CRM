@@ -17,7 +17,6 @@ public sealed class ProductCatalogServiceTests
             "Duplicate product",
             "kg",
             40,
-            25,
             true), CancellationToken.None));
     }
 
@@ -37,7 +36,6 @@ public sealed class ProductCatalogServiceTests
             "Updated blend description",
             "kg",
             39,
-            26,
             false), CancellationToken.None);
 
         var persistedOrderItem = await db.OrderItems.AsNoTracking().FirstAsync(x => x.Id == historicalOrderItem.Id);

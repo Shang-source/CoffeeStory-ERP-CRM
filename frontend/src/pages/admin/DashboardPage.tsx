@@ -87,6 +87,7 @@ function QueueCard({
   oldest,
   actionLabel,
   onAction,
+  onOpen,
   actionDisabled,
   children,
 }: {
@@ -99,6 +100,7 @@ function QueueCard({
   oldest: string;
   actionLabel: string;
   onAction: () => void;
+  onOpen?: () => void;
   actionDisabled?: boolean;
   children: React.ReactNode;
 }) {
@@ -106,7 +108,18 @@ function QueueCard({
     <Card sx={{ height: '100%', borderRadius: 3, border: `1px solid ${accent}44`, boxShadow: `0 10px 24px ${accent}1f` }}>
       <CardContent>
         <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 2 }}>
-          <Box sx={{ width: 48, height: 48, borderRadius: 2, bgcolor: `${accent}18`, color: accent, display: 'grid', placeItems: 'center' }}>
+          <Box
+            role={onOpen ? 'button' : undefined}
+            tabIndex={onOpen ? 0 : undefined}
+            onClick={onOpen}
+            onKeyDown={(event) => {
+              if (onOpen && (event.key === 'Enter' || event.key === ' ')) {
+                event.preventDefault();
+                onOpen();
+              }
+            }}
+            sx={{ width: 48, height: 48, borderRadius: 2, bgcolor: `${accent}18`, color: accent, display: 'grid', placeItems: 'center', cursor: onOpen ? 'pointer' : 'default' }}
+          >
             {icon}
           </Box>
           <Box sx={{ minWidth: 0, flex: 1 }}>
@@ -338,6 +351,7 @@ export default function AdminDashboard() {
             metric={`${needProductionOrders.length} order${needProductionOrders.length === 1 ? '' : 's'}`}
             oldest={waitLabel(needProductionOrders.map((order) => order.generatedAt))}
             actionLabel="Send all visible to production"
+            onOpen={() => navigate('/admin/orders?tab=needProduction')}
             actionDisabled={needProductionOrders.length === 0 || batchToProduction.isPending}
             onAction={() => batchToProduction.mutate(needProductionOrders.map((order) => order.id))}
           >
@@ -355,6 +369,7 @@ export default function AdminDashboard() {
             metric={`${productionQuantity} unit${productionQuantity === 1 ? '' : 's'} left`}
             oldest="Open queue"
             actionLabel="Open production list"
+            onOpen={() => navigate('/admin/production')}
             onAction={() => navigate('/admin/production')}
           >
             <ProductionRows items={productionItems} />
@@ -371,6 +386,7 @@ export default function AdminDashboard() {
             metric={formatMoney(readyToShipOrders.reduce((sum, order) => sum + order.totalAmount, 0))}
             oldest={waitLabel(readyToShipOrders.map((order) => order.generatedAt), 'Open queue')}
             actionLabel="Ship all ready + send invoices"
+            onOpen={() => navigate('/admin/orders?tab=readyToShip')}
             actionDisabled={readyToShipOrders.length === 0 || batchShipAndInvoice.isPending}
             onAction={() => batchShipAndInvoice.mutate(readyToShipOrders.map((order) => order.id))}
           >
@@ -388,6 +404,7 @@ export default function AdminDashboard() {
             metric={formatMoney(outstanding)}
             oldest={waitLabel(awaitingPaymentInvoices.map((invoice) => invoice.dueDate))}
             actionLabel="Open payments"
+            onOpen={() => navigate('/admin/payments?tab=toCollect')}
             onAction={() => navigate('/admin/payments')}
           >
             <InvoiceRows invoices={awaitingPaymentInvoices} />
@@ -404,6 +421,7 @@ export default function AdminDashboard() {
             metric={`${problemItems.filter((problem) => problem.severity === 'Critical').length} critical`}
             oldest={waitLabel(problemItems.map((problem) => problem.createdAt))}
             actionLabel="Review problems"
+            onOpen={() => navigate(problemItems[0]?.targetPath ?? '/admin/logs')}
             onAction={() => navigate(problemItems[0]?.targetPath ?? '/admin/logs')}
           >
             <ProblemRows problems={problemItems} />

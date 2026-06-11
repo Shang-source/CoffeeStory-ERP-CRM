@@ -41,6 +41,18 @@ public sealed class EfCustomerRepository(AppDbContext db, IClock clock) : ICusto
             cancellationToken);
     }
 
+    public async Task<string> GetNextAccountNumber(CancellationToken cancellationToken)
+    {
+        var accountNumbers = await db.Customers
+            .Select(customer => customer.AccountNumber)
+            .ToListAsync(cancellationToken);
+        var maxExisting = accountNumbers
+            .Select(number => int.TryParse(number, out var parsed) ? parsed : 300)
+            .DefaultIfEmpty(300)
+            .Max();
+        return (maxExisting + 1).ToString();
+    }
+
     public async Task<CustomerArchiveBlockers> GetArchiveBlockers(Guid customerId, CancellationToken cancellationToken)
     {
         var activeStandingOrders = await db.StandingOrders.CountAsync(

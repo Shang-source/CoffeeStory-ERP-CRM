@@ -52,6 +52,21 @@ public sealed class EfStatementRepository(AppDbContext db, IClock clock) : IStat
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<Invoice>> GetLedgerInvoicesForCustomer(Guid customerId, DateTimeOffset periodStart, DateTimeOffset periodEnd, CancellationToken cancellationToken)
+    {
+        return await db.Invoices
+            .Include(invoice => invoice.Customer)
+            .Include(invoice => invoice.Payments)
+            .Where(invoice => invoice.CustomerId == customerId &&
+                invoice.Status != InvoiceStatus.Cancelled &&
+                invoice.IssueDate <= periodEnd &&
+                (invoice.IssueDate >= periodStart ||
+                 invoice.OutstandingAmount > 0 ||
+                 invoice.Payments.Any(payment => !payment.IsVoided && payment.PaymentDate >= periodStart && payment.PaymentDate <= periodEnd)))
+            .OrderBy(invoice => invoice.IssueDate)
+            .ToListAsync(cancellationToken);
+    }
+
     public Task<Statement?> GetCustomerStatementInPeriod(Guid customerId, DateTimeOffset periodStart, DateTimeOffset periodEnd, CancellationToken cancellationToken)
     {
         return BaseQuery()

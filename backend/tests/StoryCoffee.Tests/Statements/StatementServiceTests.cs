@@ -100,11 +100,16 @@ public sealed class StatementServiceTests
         var statement = (await service.GenerateWeeklyStatements(CancellationToken.None)).First();
 
         var result = await service.GenerateStatementPdf(statement.Id, statement.CustomerId, CancellationToken.None);
+        var accountNumber = statement.Customer!.AccountNumber;
 
         var storedStatement = await db.Statements.AsNoTracking().SingleAsync(x => x.Id == statement.Id);
         Assert.Equal($"statements/{statement.StatementNumber}.pdf", storedStatement.PdfFileKey);
         Assert.NotNull(storedStatement.PdfGeneratedAt);
         Assert.Equal($"{statement.StatementNumber}.pdf", result.FileName);
+        Assert.Equal(accountNumber, result.Statement!.AccountNumber);
+        Assert.Contains(result.Lines, line => line == $"Payment reference: {accountNumber}");
+        Assert.Contains(result.Lines, line => line == "Account name: reborn Edge Limited");
+        Assert.Contains(result.Statement.LedgerLines, line => line.Description == "Opening balance" || line.Debit.HasValue || line.Credit.HasValue);
         Assert.Contains(await db.AuditLogs.ToListAsync(), log => log.Action == "GeneratedStatementPdf" && log.EntityId == statement.Id);
     }
 

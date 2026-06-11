@@ -36,6 +36,7 @@ public sealed class CustomerUseCase(
             var customer = new Customer
             {
                 Id = Guid.NewGuid(),
+                AccountNumber = await customers.GetNextAccountNumber(token),
                 BusinessName = request.BusinessName.Trim(),
                 ContactPerson = request.ContactPerson.Trim(),
                 Email = normalizedEmail,

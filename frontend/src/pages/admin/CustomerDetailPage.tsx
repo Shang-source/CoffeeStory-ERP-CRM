@@ -69,11 +69,12 @@ export default function CustomerDetail() {
     sendInviteMutation.mutate(customer.id);
   };
 
-  const canSendInvite = Boolean(customer) &&
-    customer?.accountStatus !== 'Suspended' &&
-    customer?.accountStatus !== 'Archived' &&
-    customer?.phone.trim().length > 0 &&
-    (!customer?.hasPortalUser || customer?.accountStatus === 'Draft' || customer?.accountStatus === 'Invited');
+  const canSendInvite = customer
+    ? customer.accountStatus !== 'Suspended' &&
+      customer.accountStatus !== 'Archived' &&
+      customer.phone.trim().length > 0 &&
+      (!customer.hasPortalUser || customer.accountStatus === 'Draft' || customer.accountStatus === 'Invited')
+    : false;
 
   const handlePriceBookChange = (productId: string, update: Partial<CustomerPriceBookItem>) => {
     setPriceBookItems((currentItems) =>
@@ -161,6 +162,11 @@ export default function CustomerDetail() {
                 Customer Information
               </Typography>
               <Divider sx={{ mb: 2 }} />
+
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary">Account Number</Typography>
+                <Typography variant="body1">{customer.accountNumber}</Typography>
+              </Box>
 
               <Box sx={{ mb: 2 }}>
                 <Typography variant="body2" color="text.secondary">Contact Person</Typography>

@@ -4,6 +4,7 @@ namespace StoryCoffee.Contracts;
 
 public sealed record CustomerDto(
     Guid Id,
+    string AccountNumber,
     string BusinessName,
     string ContactPerson,
     string Email,

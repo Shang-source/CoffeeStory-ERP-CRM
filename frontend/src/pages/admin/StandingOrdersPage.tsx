@@ -57,7 +57,7 @@ interface StandingOrderFormState {
 const emptyForm: StandingOrderFormState = {
   customerId: '',
   frequency: 'Weekly',
-  nextClosingDate: new Date().toISOString().slice(0, 10),
+  nextClosingDate: nextFridayDateInput(),
   status: 'Active',
   deliveryNotes: '',
   internalNotes: '',
@@ -101,6 +101,7 @@ export default function StandingOrders() {
     setFormData({
       ...emptyForm,
       customerId: customers[0]?.id ?? '',
+      nextClosingDate: nextFridayDateInput(),
       items: [{ productId: products[0]?.id ?? '', quantity: 1, notes: '' }],
     });
     setIsDialogOpen(true);
@@ -127,6 +128,11 @@ export default function StandingOrders() {
   const handleSave = async () => {
     if (!formData.customerId || formData.items.some((item) => !item.productId || item.quantity <= 0)) {
       toast.error('Customer, products, and positive quantities are required');
+      return;
+    }
+
+    if (!isFridayDateInput(formData.nextClosingDate)) {
+      toast.error('Next closing date must be a Friday');
       return;
     }
 
@@ -339,6 +345,9 @@ export default function StandingOrders() {
                 value={formData.nextClosingDate}
                 onChange={(event) => setFormData({ ...formData, nextClosingDate: event.target.value })}
                 InputLabelProps={{ shrink: true }}
+                inputProps={{ min: '1970-01-02', step: 7 }}
+                error={Boolean(formData.nextClosingDate) && !isFridayDateInput(formData.nextClosingDate)}
+                helperText="Closing dates must be Fridays"
               />
             </Grid>
             <Grid size={{ xs: 12, md: 4 }}>
@@ -420,4 +429,20 @@ export default function StandingOrders() {
 
 function toDateInput(value: Date) {
   return value.toISOString().slice(0, 10);
+}
+
+function nextFridayDateInput() {
+  const date = new Date();
+  const daysUntilFriday = (5 - date.getUTCDay() + 7) % 7;
+  date.setUTCDate(date.getUTCDate() + daysUntilFriday);
+  return toDateInput(date);
+}
+
+function isFridayDateInput(value: string) {
+  if (!value) {
+    return false;
+  }
+
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return !Number.isNaN(date.getTime()) && date.getUTCDay() === 5;
 }

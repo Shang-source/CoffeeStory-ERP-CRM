@@ -44,7 +44,7 @@ public static class StoryCoffeeEmailTemplates
         return new RenderedEmail(text, html);
     }
 
-    public static RenderedEmail Invoice(string invoiceNumber, string customerName, decimal amountDue, DateTimeOffset dueDate)
+    public static RenderedEmail Invoice(string invoiceNumber, string accountNumber, string customerName, decimal amountDue, DateTimeOffset dueDate)
     {
         var amount = Money(amountDue);
         var due = Date(dueDate);
@@ -55,7 +55,7 @@ public static class StoryCoffeeEmailTemplates
             Amount due: {amount}
             Payment due: {due}
 
-            Please use your company name or invoice number as the payment reference.
+            Please use your account number as the payment reference: {accountNumber}
 
             Bank: ASB
             Account number: 12-3077-0789998-00
@@ -73,7 +73,7 @@ public static class StoryCoffeeEmailTemplates
             <div class="summary">
               <div><span>Invoice number</span><strong>{Html(invoiceNumber)}</strong></div>
               <div><span>Customer</span><strong>{Html(customerName)}</strong></div>
-              <div><span>Payment reference</span><strong>Your company name or invoice number</strong></div>
+              <div><span>Payment reference</span><strong>{Html(accountNumber)}</strong></div>
             </div>
             <p><strong>Payment details</strong><br>Bank: ASB<br>Account number: 12-3077-0789998-00</p>
             """);
@@ -81,10 +81,11 @@ public static class StoryCoffeeEmailTemplates
         return new RenderedEmail(text, html);
     }
 
-    public static RenderedEmail Statement(string statementNumber, string customerName, decimal totalOutstanding, DateTimeOffset statementDate)
+    public static RenderedEmail Statement(string statementNumber, string accountNumber, string customerName, decimal totalOutstanding, DateTimeOffset statementDate)
     {
         var amount = Money(totalOutstanding);
         var statementDateText = Date(statementDate);
+        var paymentReference = accountNumber;
         var text = $"""
             Your StoryCoffee statement {statementNumber} is attached.
 
@@ -92,8 +93,9 @@ public static class StoryCoffeeEmailTemplates
             Total outstanding: {amount}
             Statement date: {statementDateText}
 
-            Please use your company name or statement number as the payment reference.
+            Please use your account number as the payment reference: {paymentReference}
 
+            Account name: reborn Edge Limited
             Bank: ASB
             Account number: 12-3077-0789998-00
             """;
@@ -110,9 +112,9 @@ public static class StoryCoffeeEmailTemplates
             <div class="summary">
               <div><span>Statement number</span><strong>{Html(statementNumber)}</strong></div>
               <div><span>Customer</span><strong>{Html(customerName)}</strong></div>
-              <div><span>Payment reference</span><strong>Your company name or statement number</strong></div>
+              <div><span>Payment reference</span><strong>{Html(paymentReference)}</strong></div>
             </div>
-            <p><strong>Payment details</strong><br>Bank: ASB<br>Account number: 12-3077-0789998-00</p>
+            <p><strong>Payment details</strong><br>Account name: reborn Edge Limited<br>Bank: ASB<br>Account number: 12-3077-0789998-00</p>
             """);
 
         return new RenderedEmail(text, html);

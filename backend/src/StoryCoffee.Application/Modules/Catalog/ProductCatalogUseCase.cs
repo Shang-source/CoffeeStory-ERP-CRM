@@ -108,7 +108,7 @@ public sealed class ProductCatalogUseCase(
     {
         return unitOfWork.ExecuteInTransaction(async token =>
         {
-            ValidateProductFields(request.Sku, request.Name, request.Unit, request.Price, request.Cost);
+            ValidateProductFields(request.Sku, request.Name, request.Unit, request.Price);
             var normalizedSku = request.Sku.Trim().ToUpperInvariant();
             if (await catalog.ProductSkuExists(null, normalizedSku, token))
             {
@@ -123,7 +123,7 @@ public sealed class ProductCatalogUseCase(
                 Description = request.Description.Trim(),
                 Unit = request.Unit.Trim(),
                 Price = request.Price,
-                Cost = request.Cost,
+                Cost = 0,
                 IsActive = request.IsActive
             };
 
@@ -139,7 +139,7 @@ public sealed class ProductCatalogUseCase(
         {
             var product = await catalog.GetProduct(productId, token)
                 ?? throw new KeyNotFoundException("Product not found.");
-            ValidateProductFields(request.Sku, request.Name, request.Unit, request.Price, request.Cost);
+            ValidateProductFields(request.Sku, request.Name, request.Unit, request.Price);
             var normalizedSku = request.Sku.Trim().ToUpperInvariant();
             if (await catalog.ProductSkuExists(productId, normalizedSku, token))
             {
@@ -152,7 +152,7 @@ public sealed class ProductCatalogUseCase(
             product.Description = request.Description.Trim();
             product.Unit = request.Unit.Trim();
             product.Price = request.Price;
-            product.Cost = request.Cost;
+            product.Cost = 0;
             product.IsActive = request.IsActive;
             catalog.AddAuditChange("UpdatedProduct", "Product", product.Id, $"Updated product {product.Sku}", oldValues, ProductAuditValues(product));
 
@@ -188,7 +188,7 @@ public sealed class ProductCatalogUseCase(
         }
     }
 
-    private static void ValidateProductFields(string sku, string name, string unit, decimal price, decimal cost)
+    private static void ValidateProductFields(string sku, string name, string unit, decimal price)
     {
         if (string.IsNullOrWhiteSpace(sku))
         {
@@ -205,9 +205,9 @@ public sealed class ProductCatalogUseCase(
             throw new InvalidOperationException("Unit is required.");
         }
 
-        if (price < 0 || cost < 0)
+        if (price < 0)
         {
-            throw new InvalidOperationException("Price and cost must be greater than or equal to zero.");
+            throw new InvalidOperationException("Price must be greater than or equal to zero.");
         }
     }
 
@@ -220,7 +220,6 @@ public sealed class ProductCatalogUseCase(
             product.Description,
             product.Unit,
             product.Price,
-            product.Cost,
             product.IsActive
         };
     }
